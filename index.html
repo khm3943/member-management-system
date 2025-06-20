@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LOL 회원 관리 시스템</title>
+    <title>LOL 회원 관리</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -16,67 +16,58 @@
     <div id="root"></div>
     <script type="text/babel">
         const { useState, useEffect } = React;
-
-        // Firebase 설정
-        const firebaseConfig = {
+        
+        firebase.initializeApp({
             apiKey: "AIzaSyBQKKW65qAGNpa1G51hf2ntRw10hZNg8s0",
             authDomain: "member-system-d4684.firebaseapp.com",
             projectId: "member-system-d4684",
             storageBucket: "member-system-d4684.firebasestorage.app",
             messagingSenderId: "904998203480",
             appId: "1:904998203480:web:6686cdc25fff8bdae75a2d"
-        };
-
-        firebase.initializeApp(firebaseConfig);
+        });
         const db = firebase.firestore();
+
+        const positions = ['없음', '탑', '정글', '미드', '원딜', '서폿'];
 
         function App() {
             const [members, setMembers] = useState([]);
             const [loading, setLoading] = useState(true);
-            const [showAddForm, setShowAddForm] = useState(false);
-            const [searchTerm, setSearchTerm] = useState('');
-            const [formData, setFormData] = useState({
-                name: '', nickname: '', birthYear: '', joinDate: '', 
-                tier: '', position: '', warning: '', uniqueId: '', note: ''
+            const [showForm, setShowForm] = useState(false);
+            const [search, setSearch] = useState('');
+            const [form, setForm] = useState({
+                name: '', nickname: '', birthYear: '', tier: '',
+                mainPosition: '없음', subPosition: '없음', note: ''
             });
 
-            // Firebase 데이터 로드
             useEffect(() => {
-                const unsubscribe = db.collection('lol_members').orderBy('createdAt', 'desc')
-                    .onSnapshot(snapshot => {
-                        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                        setMembers(data);
+                return db.collection('lol_members').orderBy('createdAt', 'desc')
+                    .onSnapshot(snap => {
+                        setMembers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
                         setLoading(false);
                     });
-                return () => unsubscribe();
             }, []);
 
-            // 회원 추가
-            const handleAddMember = async () => {
-                if (!formData.name || !formData.nickname) {
+            const handleSubmit = async () => {
+                if (!form.name || !form.nickname) {
                     alert('이름과 닉네임은 필수입니다!');
                     return;
                 }
                 await db.collection('lol_members').add({
-                    ...formData,
+                    ...form,
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
-                setFormData({
-                    name: '', nickname: '', birthYear: '', joinDate: '', 
-                    tier: '', position: '', warning: '', uniqueId: '', note: ''
-                });
-                setShowAddForm(false);
+                setForm({ name: '', nickname: '', birthYear: '', tier: '', 
+                         mainPosition: '없음', subPosition: '없음', note: '' });
+                setShowForm(false);
             };
 
-            // 회원 삭제
             const handleDelete = async (id) => {
-                if (confirm('정말 삭제하시겠습니까?')) {
+                if (confirm('삭제하시겠습니까?')) {
                     await db.collection('lol_members').doc(id).delete();
                 }
             };
 
-            // CSV 임포트
-            const handleCSVImport = (e) => {
+            const handleCSV = (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
 
@@ -85,36 +76,42 @@
                         const batch = db.batch();
                         let count = 0;
                         
-                        results.data.forEach((row, index) => {
-                            if (index < 13) return; // 헤더 스킵
-                            if (!row[1] || !row[2]) return; // 이름, 닉네임 없으면 스킵
+                        results.data.forEach((row, i) => {
+                            if (i < 13 || !row[1] || !row[2]) return;
                             
-                            const docRef = db.collection('lol_members').doc();
-                            batch.set(docRef, {
+                            const positions = [row[13], row[14], row[15], row[16], row[17]];
+                            const mainIdx = positions.findIndex(p => p === '●');
+                            const subIdx = positions.findIndex(p => p === '○');
+                            const posNames = ['탑', '정글', '미드', '원딜', '서폿'];
+                            
+                            batch.set(db.collection('lol_members').doc(), {
                                 name: row[1],
                                 nickname: row[2],
                                 birthYear: row[3] || '',
-                                joinDate: row[4] || '',
-                                warning: row[5] || '',
-                                uniqueId: row[6] || '',
-                                note: row[7] || '',
                                 tier: row[10] || '',
-                                position: `${row[13]||''}${row[14]||''}${row[15]||''}${row[16]||''}${row[17]||''}`,
+                                mainPosition: mainIdx >= 0 ? posNames[mainIdx] : '없음',
+                                subPosition: subIdx >= 0 ? posNames[subIdx] : '없음',
+                                note: row[7] || '',
                                 createdAt: firebase.firestore.FieldValue.serverTimestamp()
                             });
                             count++;
                         });
                         
                         await batch.commit();
-                        alert(`${count}명의 회원이 추가되었습니다!`);
+                        alert(`${count}명 추가 완료!`);
+                        e.target.value = '';
                     },
                     encoding: 'UTF-8'
                 });
             };
 
-            // 필터링된 회원
-            const filteredMembers = members.filter(m => 
-                m.name.includes(searchTerm) || m.nickname.toLowerCase().includes(searchTerm.toLowerCase())
+            const getOpggLink = (nickname) => {
+                const converted = nickname.replace('#', '-');
+                return `https://op.gg/ko/lol/summoners/kr/${encodeURIComponent(converted)}`;
+            };
+
+            const filtered = members.filter(m => 
+                m.name.includes(search) || m.nickname.toLowerCase().includes(search.toLowerCase())
             );
 
             if (loading) return <div className="flex justify-center items-center h-screen">로딩중...</div>;
@@ -122,76 +119,94 @@
             return (
                 <div className="min-h-screen bg-gray-50 p-4">
                     <div className="max-w-7xl mx-auto">
-                        {/* 헤더 */}
-                        <div className="bg-white rounded-lg shadow p-6 mb-6">
-                            <h1 className="text-3xl font-bold mb-4">LOL 회원 관리 시스템</h1>
-                            <div className="flex gap-4 items-center">
+                        <div className="bg-white rounded-lg shadow p-4 mb-4">
+                            <h1 className="text-2xl font-bold mb-3">LOL 회원 관리</h1>
+                            <div className="flex gap-2">
                                 <input
                                     type="text"
-                                    placeholder="이름 또는 닉네임 검색..."
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="flex-1 px-4 py-2 border rounded-lg"
+                                    placeholder="검색..."
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                    className="flex-1 px-3 py-2 border rounded"
                                 />
                                 <button
-                                    onClick={() => setShowAddForm(true)}
-                                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                                    onClick={() => setShowForm(true)}
+                                    className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
                                 >
-                                    회원 추가
+                                    추가
                                 </button>
-                                <label className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 cursor-pointer">
-                                    CSV 가져오기
-                                    <input type="file" accept=".csv" onChange={handleCSVImport} className="hidden" />
+                                <label className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 cursor-pointer">
+                                    CSV
+                                    <input type="file" accept=".csv" onChange={handleCSV} className="hidden" />
                                 </label>
                             </div>
                         </div>
 
-                        {/* 회원 추가 모달 */}
-                        {showAddForm && (
-                            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-                                <div className="bg-white rounded-lg p-6 w-full max-w-md">
-                                    <h2 className="text-xl font-bold mb-4">새 회원 추가</h2>
-                                    <div className="space-y-3">
+                        {showForm && (
+                            <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+                                <div className="bg-white rounded-lg p-4 w-full max-w-md">
+                                    <h2 className="text-lg font-bold mb-3">회원 추가</h2>
+                                    <div className="space-y-2">
                                         <input
                                             placeholder="이름*"
-                                            value={formData.name}
-                                            onChange={(e) => setFormData({...formData, name: e.target.value})}
+                                            value={form.name}
+                                            onChange={(e) => setForm({...form, name: e.target.value})}
                                             className="w-full px-3 py-2 border rounded"
                                         />
                                         <input
-                                            placeholder="닉네임* (예: 크 넹#크 넹)"
-                                            value={formData.nickname}
-                                            onChange={(e) => setFormData({...formData, nickname: e.target.value})}
+                                            placeholder="닉네임#태그*"
+                                            value={form.nickname}
+                                            onChange={(e) => setForm({...form, nickname: e.target.value})}
                                             className="w-full px-3 py-2 border rounded"
                                         />
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <input
+                                                placeholder="생년"
+                                                value={form.birthYear}
+                                                onChange={(e) => setForm({...form, birthYear: e.target.value})}
+                                                className="px-3 py-2 border rounded"
+                                            />
+                                            <input
+                                                placeholder="티어"
+                                                value={form.tier}
+                                                onChange={(e) => setForm({...form, tier: e.target.value})}
+                                                className="px-3 py-2 border rounded"
+                                            />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <select
+                                                value={form.mainPosition}
+                                                onChange={(e) => setForm({...form, mainPosition: e.target.value})}
+                                                className="px-3 py-2 border rounded"
+                                            >
+                                                <option disabled>주라인</option>
+                                                {positions.map(p => <option key={p} value={p}>{p}</option>)}
+                                            </select>
+                                            <select
+                                                value={form.subPosition}
+                                                onChange={(e) => setForm({...form, subPosition: e.target.value})}
+                                                className="px-3 py-2 border rounded"
+                                            >
+                                                <option disabled>부라인</option>
+                                                {positions.map(p => <option key={p} value={p}>{p}</option>)}
+                                            </select>
+                                        </div>
                                         <input
-                                            placeholder="생년 (예: 1990)"
-                                            value={formData.birthYear}
-                                            onChange={(e) => setFormData({...formData, birthYear: e.target.value})}
-                                            className="w-full px-3 py-2 border rounded"
-                                        />
-                                        <input
-                                            placeholder="티어 (예: Diamond 4)"
-                                            value={formData.tier}
-                                            onChange={(e) => setFormData({...formData, tier: e.target.value})}
-                                            className="w-full px-3 py-2 border rounded"
-                                        />
-                                        <input
-                                            placeholder="포지션 (예: 탑, 정글)"
-                                            value={formData.position}
-                                            onChange={(e) => setFormData({...formData, position: e.target.value})}
+                                            placeholder="비고"
+                                            value={form.note}
+                                            onChange={(e) => setForm({...form, note: e.target.value})}
                                             className="w-full px-3 py-2 border rounded"
                                         />
                                     </div>
-                                    <div className="flex gap-3 mt-4">
+                                    <div className="flex gap-2 mt-3">
                                         <button
-                                            onClick={handleAddMember}
+                                            onClick={handleSubmit}
                                             className="flex-1 bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
                                         >
-                                            추가
+                                            저장
                                         </button>
                                         <button
-                                            onClick={() => setShowAddForm(false)}
+                                            onClick={() => setShowForm(false)}
                                             className="flex-1 bg-gray-300 py-2 rounded hover:bg-gray-400"
                                         >
                                             취소
@@ -201,58 +216,57 @@
                             </div>
                         )}
 
-                        {/* 회원 목록 */}
                         <div className="bg-white rounded-lg shadow overflow-hidden">
-                            <table className="w-full">
-                                <thead className="bg-gray-50">
-                                    <tr>
-                                        <th className="px-4 py-3 text-left">이름</th>
-                                        <th className="px-4 py-3 text-left">닉네임</th>
-                                        <th className="px-4 py-3 text-left">생년</th>
-                                        <th className="px-4 py-3 text-left">티어</th>
-                                        <th className="px-4 py-3 text-left">포지션</th>
-                                        <th className="px-4 py-3 text-left">OP.GG</th>
-                                        <th className="px-4 py-3 text-left">작업</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {filteredMembers.map(member => (
-                                        <tr key={member.id} className="border-t hover:bg-gray-50">
-                                            <td className="px-4 py-3">{member.name}</td>
-                                            <td className="px-4 py-3">{member.nickname}</td>
-                                            <td className="px-4 py-3">{member.birthYear}</td>
-                                            <td className="px-4 py-3">
-                                                <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm">
-                                                    {member.tier || '-'}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-3">{member.position || '-'}</td>
-                                            <td className="px-4 py-3">
-                                                <a 
-                                                    href={`https://op.gg/summoners/kr/${encodeURIComponent(member.nickname.split('#')[0])}`}
-                                                    target="_blank"
-                                                    className="text-blue-600 hover:underline"
-                                                >
-                                                    전적검색
-                                                </a>
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <button
-                                                    onClick={() => handleDelete(member.id)}
-                                                    className="text-red-600 hover:text-red-800"
-                                                >
-                                                    삭제
-                                                </button>
-                                            </td>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead className="bg-gray-50">
+                                        <tr>
+                                            <th className="px-3 py-2 text-left">이름</th>
+                                            <th className="px-3 py-2 text-left">닉네임</th>
+                                            <th className="px-3 py-2 text-left">티어</th>
+                                            <th className="px-3 py-2 text-left">주라인</th>
+                                            <th className="px-3 py-2 text-left">부라인</th>
+                                            <th className="px-3 py-2 text-left">OP.GG</th>
+                                            <th className="px-3 py-2 text-left">작업</th>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                            {filteredMembers.length === 0 && (
-                                <div className="text-center py-8 text-gray-500">
-                                    회원이 없습니다.
-                                </div>
-                            )}
+                                    </thead>
+                                    <tbody>
+                                        {filtered.map(m => (
+                                            <tr key={m.id} className="border-t hover:bg-gray-50">
+                                                <td className="px-3 py-2">{m.name}</td>
+                                                <td className="px-3 py-2 font-mono text-xs">{m.nickname}</td>
+                                                <td className="px-3 py-2">
+                                                    <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">
+                                                        {m.tier || '-'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-3 py-2">{m.mainPosition}</td>
+                                                <td className="px-3 py-2">{m.subPosition}</td>
+                                                <td className="px-3 py-2">
+                                                    <a 
+                                                        href={getOpggLink(m.nickname)}
+                                                        target="_blank"
+                                                        className="text-blue-600 hover:underline"
+                                                    >
+                                                        전적
+                                                    </a>
+                                                </td>
+                                                <td className="px-3 py-2">
+                                                    <button
+                                                        onClick={() => handleDelete(m.id)}
+                                                        className="text-red-600 hover:text-red-800 text-xs"
+                                                    >
+                                                        삭제
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                                {filtered.length === 0 && (
+                                    <div className="text-center py-8 text-gray-500">데이터가 없습니다</div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>
