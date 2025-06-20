@@ -3,30 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>회원 관리 시스템</title>
-    <!-- React -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Babel -->
+    <title>LOL 회원 관리 시스템</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Firebase -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 </head>
 <body>
-    <div id="root">
-        <div style="display: flex; justify-content: center; align-items: center; min-height: 100vh; background-color: #f3f4f6;">
-            <div style="text-align: center;">
-                <h1 style="font-size: 24px; font-weight: bold; color: #1f2937; margin-bottom: 16px;">회원 관리 시스템</h1>
-                <p style="color: #6b7280;">로딩 중...</p>
-            </div>
-        </div>
-    </div>
-
+    <div id="root"></div>
     <script type="text/babel">
-        // React 컴포넌트
         const { useState, useEffect } = React;
 
         // Firebase 설정
@@ -39,246 +27,122 @@
             appId: "1:904998203480:web:6686cdc25fff8bdae75a2d"
         };
 
-        // Firebase 초기화
-        let db = null;
-        try {
-            firebase.initializeApp(firebaseConfig);
-            db = firebase.firestore();
-            console.log("Firebase 초기화 성공");
-        } catch (error) {
-            console.error("Firebase 초기화 실패:", error);
-        }
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
 
-        // 아이콘 컴포넌트들
-        const PlusIcon = () => (
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-        );
-
-        const SearchIcon = () => (
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="11" cy="11" r="8"></circle>
-                <path d="m21 21-4.35-4.35"></path>
-            </svg>
-        );
-
-        const XIcon = () => (
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-        );
-
-        // 메인 컴포넌트
-        function MemberManagementApp() {
+        function App() {
             const [members, setMembers] = useState([]);
+            const [loading, setLoading] = useState(true);
             const [showAddForm, setShowAddForm] = useState(false);
             const [searchTerm, setSearchTerm] = useState('');
-            const [filterDepartment, setFilterDepartment] = useState('전체');
-            const [loading, setLoading] = useState(true);
-            const [error, setError] = useState(null);
             const [formData, setFormData] = useState({
-                name: '',
-                email: '',
-                phone: '',
-                department: '',
-                position: '',
-                joinDate: new Date().toISOString().split('T')[0]
+                name: '', nickname: '', birthYear: '', joinDate: '', 
+                tier: '', position: '', warning: '', uniqueId: '', note: ''
             });
 
             // Firebase 데이터 로드
             useEffect(() => {
-                if (!db) {
-                    setError("Firebase 연결 실패");
-                    setLoading(false);
-                    return;
-                }
-
-                try {
-                    const unsubscribe = db.collection('members')
-                        .orderBy('createdAt', 'desc')
-                        .onSnapshot(
-                            (snapshot) => {
-                                const membersData = [];
-                                snapshot.forEach((doc) => {
-                                    membersData.push({ id: doc.id, ...doc.data() });
-                                });
-                                setMembers(membersData);
-                                setLoading(false);
-                                setError(null);
-                            },
-                            (err) => {
-                                console.error("Firestore 에러:", err);
-                                setError("데이터 로드 실패: " + err.message);
-                                setLoading(false);
-                            }
-                        );
-
-                    return () => unsubscribe();
-                } catch (err) {
-                    console.error("Setup 에러:", err);
-                    setError("초기화 실패: " + err.message);
-                    setLoading(false);
-                }
+                const unsubscribe = db.collection('lol_members').orderBy('createdAt', 'desc')
+                    .onSnapshot(snapshot => {
+                        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        setMembers(data);
+                        setLoading(false);
+                    });
+                return () => unsubscribe();
             }, []);
 
             // 회원 추가
             const handleAddMember = async () => {
-                if (!formData.name) {
-                    alert('이름은 필수 입력 항목입니다.');
+                if (!formData.name || !formData.nickname) {
+                    alert('이름과 닉네임은 필수입니다!');
                     return;
                 }
-
-                try {
-                    await db.collection('members').add({
-                        ...formData,
-                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                    });
-
-                    setFormData({
-                        name: '',
-                        email: '',
-                        phone: '',
-                        department: '',
-                        position: '',
-                        joinDate: new Date().toISOString().split('T')[0]
-                    });
-                    setShowAddForm(false);
-                } catch (error) {
-                    alert('회원 추가 실패: ' + error.message);
-                }
+                await db.collection('lol_members').add({
+                    ...formData,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                setFormData({
+                    name: '', nickname: '', birthYear: '', joinDate: '', 
+                    tier: '', position: '', warning: '', uniqueId: '', note: ''
+                });
+                setShowAddForm(false);
             };
 
             // 회원 삭제
-            const handleDeleteMember = async (id) => {
-                if (window.confirm('정말로 이 회원을 삭제하시겠습니까?')) {
-                    try {
-                        await db.collection('members').doc(id).delete();
-                    } catch (error) {
-                        alert('회원 삭제 실패: ' + error.message);
-                    }
+            const handleDelete = async (id) => {
+                if (confirm('정말 삭제하시겠습니까?')) {
+                    await db.collection('lol_members').doc(id).delete();
                 }
             };
 
-            // CSV 내보내기
-            const exportToCSV = () => {
-                const headers = ['이름', '이메일', '전화번호', '부서', '직급', '가입일'];
-                const data = members.map(m => [
-                    m.name,
-                    m.email || '',
-                    m.phone || '',
-                    m.department || '',
-                    m.position || '',
-                    m.joinDate || ''
-                ]);
-                
-                let csv = '\uFEFF' + headers.join(',') + '\n';
-                data.forEach(row => {
-                    csv += row.map(cell => `"${cell}"`).join(',') + '\n';
+            // CSV 임포트
+            const handleCSVImport = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                Papa.parse(file, {
+                    complete: async (results) => {
+                        const batch = db.batch();
+                        let count = 0;
+                        
+                        results.data.forEach((row, index) => {
+                            if (index < 13) return; // 헤더 스킵
+                            if (!row[1] || !row[2]) return; // 이름, 닉네임 없으면 스킵
+                            
+                            const docRef = db.collection('lol_members').doc();
+                            batch.set(docRef, {
+                                name: row[1],
+                                nickname: row[2],
+                                birthYear: row[3] || '',
+                                joinDate: row[4] || '',
+                                warning: row[5] || '',
+                                uniqueId: row[6] || '',
+                                note: row[7] || '',
+                                tier: row[10] || '',
+                                position: `${row[13]||''}${row[14]||''}${row[15]||''}${row[16]||''}${row[17]||''}`,
+                                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                            });
+                            count++;
+                        });
+                        
+                        await batch.commit();
+                        alert(`${count}명의 회원이 추가되었습니다!`);
+                    },
+                    encoding: 'UTF-8'
                 });
-                
-                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-                const link = document.createElement('a');
-                link.href = URL.createObjectURL(blob);
-                link.download = `회원명단_${new Date().toISOString().split('T')[0]}.csv`;
-                link.click();
             };
 
-            // 부서 목록
-            const departments = ['전체', ...new Set(members.map(m => m.department).filter(d => d))];
+            // 필터링된 회원
+            const filteredMembers = members.filter(m => 
+                m.name.includes(searchTerm) || m.nickname.toLowerCase().includes(searchTerm.toLowerCase())
+            );
 
-            // 필터링
-            const filteredMembers = members.filter(member => {
-                const matchesSearch = 
-                    member.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                    (member.email && member.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
-                    (member.phone && member.phone.includes(searchTerm));
-                const matchesDepartment = filterDepartment === '전체' || member.department === filterDepartment;
-                return matchesSearch && matchesDepartment;
-            });
+            if (loading) return <div className="flex justify-center items-center h-screen">로딩중...</div>;
 
-            // 로딩 화면
-            if (loading) {
-                return (
-                    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-                        <div className="text-center">
-                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-                            <p className="mt-4 text-gray-600">데이터 로딩 중...</p>
-                        </div>
-                    </div>
-                );
-            }
-
-            // 에러 화면
-            if (error) {
-                return (
-                    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-                        <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md w-full">
-                            <h2 className="text-red-800 font-bold text-lg mb-2">오류 발생</h2>
-                            <p className="text-red-600">{error}</p>
-                            <p className="text-red-600 text-sm mt-2">Firebase 콘솔에서 Firestore 데이터베이스가 활성화되어 있는지 확인해주세요.</p>
-                        </div>
-                    </div>
-                );
-            }
-
-            // 메인 화면
             return (
                 <div className="min-h-screen bg-gray-50 p-4">
                     <div className="max-w-7xl mx-auto">
                         {/* 헤더 */}
-                        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-                            <div className="flex justify-between items-center mb-6">
-                                <div>
-                                    <h1 className="text-3xl font-bold text-gray-800">
-                                        회원 관리 시스템
-                                    </h1>
-                                    <p className="text-gray-600 mt-2">총 {members.length}명의 회원</p>
-                                </div>
-                                <div className="flex gap-3">
-                                    <button
-                                        onClick={exportToCSV}
-                                        className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
-                                    >
-                                        CSV 내보내기
-                                    </button>
-                                    <button
-                                        onClick={() => setShowAddForm(true)}
-                                        className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
-                                    >
-                                        <PlusIcon />
-                                        회원 추가
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* 검색 및 필터 */}
-                            <div className="flex gap-4 flex-wrap">
-                                <div className="flex-1 min-w-[200px] relative">
-                                    <SearchIcon />
-                                    <input
-                                        type="text"
-                                        placeholder="검색..."
-                                        value={searchTerm}
-                                        onChange={(e) => setSearchTerm(e.target.value)}
-                                        className="w-full pl-10 pr-4 py-2 border rounded-lg"
-                                        style={{ paddingLeft: '40px' }}
-                                    />
-                                    <div style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
-                                        <SearchIcon />
-                                    </div>
-                                </div>
-                                <select
-                                    value={filterDepartment}
-                                    onChange={(e) => setFilterDepartment(e.target.value)}
-                                    className="px-4 py-2 border rounded-lg"
+                        <div className="bg-white rounded-lg shadow p-6 mb-6">
+                            <h1 className="text-3xl font-bold mb-4">LOL 회원 관리 시스템</h1>
+                            <div className="flex gap-4 items-center">
+                                <input
+                                    type="text"
+                                    placeholder="이름 또는 닉네임 검색..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="flex-1 px-4 py-2 border rounded-lg"
+                                />
+                                <button
+                                    onClick={() => setShowAddForm(true)}
+                                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
                                 >
-                                    {departments.map(dept => (
-                                        <option key={dept} value={dept}>{dept}</option>
-                                    ))}
-                                </select>
+                                    회원 추가
+                                </button>
+                                <label className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 cursor-pointer">
+                                    CSV 가져오기
+                                    <input type="file" accept=".csv" onChange={handleCSVImport} className="hidden" />
+                                </label>
                             </div>
                         </div>
 
@@ -286,67 +150,49 @@
                         {showAddForm && (
                             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
                                 <div className="bg-white rounded-lg p-6 w-full max-w-md">
-                                    <div className="flex justify-between items-center mb-4">
-                                        <h2 className="text-xl font-bold">새 회원 추가</h2>
-                                        <button onClick={() => setShowAddForm(false)}>
-                                            <XIcon />
-                                        </button>
-                                    </div>
-                                    
-                                    <div className="space-y-4">
+                                    <h2 className="text-xl font-bold mb-4">새 회원 추가</h2>
+                                    <div className="space-y-3">
                                         <input
-                                            type="text"
-                                            placeholder="이름 (필수)"
+                                            placeholder="이름*"
                                             value={formData.name}
                                             onChange={(e) => setFormData({...formData, name: e.target.value})}
-                                            className="w-full px-3 py-2 border rounded-lg"
+                                            className="w-full px-3 py-2 border rounded"
                                         />
                                         <input
-                                            type="email"
-                                            placeholder="이메일"
-                                            value={formData.email}
-                                            onChange={(e) => setFormData({...formData, email: e.target.value})}
-                                            className="w-full px-3 py-2 border rounded-lg"
+                                            placeholder="닉네임* (예: 크 넹#크 넹)"
+                                            value={formData.nickname}
+                                            onChange={(e) => setFormData({...formData, nickname: e.target.value})}
+                                            className="w-full px-3 py-2 border rounded"
                                         />
                                         <input
-                                            type="tel"
-                                            placeholder="전화번호"
-                                            value={formData.phone}
-                                            onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                                            className="w-full px-3 py-2 border rounded-lg"
+                                            placeholder="생년 (예: 1990)"
+                                            value={formData.birthYear}
+                                            onChange={(e) => setFormData({...formData, birthYear: e.target.value})}
+                                            className="w-full px-3 py-2 border rounded"
                                         />
                                         <input
-                                            type="text"
-                                            placeholder="부서"
-                                            value={formData.department}
-                                            onChange={(e) => setFormData({...formData, department: e.target.value})}
-                                            className="w-full px-3 py-2 border rounded-lg"
+                                            placeholder="티어 (예: Diamond 4)"
+                                            value={formData.tier}
+                                            onChange={(e) => setFormData({...formData, tier: e.target.value})}
+                                            className="w-full px-3 py-2 border rounded"
                                         />
                                         <input
-                                            type="text"
-                                            placeholder="직급"
+                                            placeholder="포지션 (예: 탑, 정글)"
                                             value={formData.position}
                                             onChange={(e) => setFormData({...formData, position: e.target.value})}
-                                            className="w-full px-3 py-2 border rounded-lg"
-                                        />
-                                        <input
-                                            type="date"
-                                            value={formData.joinDate}
-                                            onChange={(e) => setFormData({...formData, joinDate: e.target.value})}
-                                            className="w-full px-3 py-2 border rounded-lg"
+                                            className="w-full px-3 py-2 border rounded"
                                         />
                                     </div>
-                                    
-                                    <div className="flex gap-3 mt-6">
+                                    <div className="flex gap-3 mt-4">
                                         <button
                                             onClick={handleAddMember}
-                                            className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700"
+                                            className="flex-1 bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
                                         >
-                                            추가하기
+                                            추가
                                         </button>
                                         <button
                                             onClick={() => setShowAddForm(false)}
-                                            className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300"
+                                            className="flex-1 bg-gray-300 py-2 rounded hover:bg-gray-400"
                                         >
                                             취소
                                         </button>
@@ -356,67 +202,64 @@
                         )}
 
                         {/* 회원 목록 */}
-                        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+                        <div className="bg-white rounded-lg shadow overflow-hidden">
                             <table className="w-full">
-                                <thead className="bg-gray-50 border-b">
+                                <thead className="bg-gray-50">
                                     <tr>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">이름</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">이메일</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">전화번호</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">부서</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">직급</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">가입일</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">작업</th>
+                                        <th className="px-4 py-3 text-left">이름</th>
+                                        <th className="px-4 py-3 text-left">닉네임</th>
+                                        <th className="px-4 py-3 text-left">생년</th>
+                                        <th className="px-4 py-3 text-left">티어</th>
+                                        <th className="px-4 py-3 text-left">포지션</th>
+                                        <th className="px-4 py-3 text-left">OP.GG</th>
+                                        <th className="px-4 py-3 text-left">작업</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-gray-200">
-                                    {filteredMembers.length === 0 ? (
-                                        <tr>
-                                            <td colSpan="7" className="px-6 py-12 text-center text-gray-500">
-                                                회원이 없습니다.
+                                <tbody>
+                                    {filteredMembers.map(member => (
+                                        <tr key={member.id} className="border-t hover:bg-gray-50">
+                                            <td className="px-4 py-3">{member.name}</td>
+                                            <td className="px-4 py-3">{member.nickname}</td>
+                                            <td className="px-4 py-3">{member.birthYear}</td>
+                                            <td className="px-4 py-3">
+                                                <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm">
+                                                    {member.tier || '-'}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3">{member.position || '-'}</td>
+                                            <td className="px-4 py-3">
+                                                <a 
+                                                    href={`https://op.gg/summoners/kr/${encodeURIComponent(member.nickname.split('#')[0])}`}
+                                                    target="_blank"
+                                                    className="text-blue-600 hover:underline"
+                                                >
+                                                    전적검색
+                                                </a>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <button
+                                                    onClick={() => handleDelete(member.id)}
+                                                    className="text-red-600 hover:text-red-800"
+                                                >
+                                                    삭제
+                                                </button>
                                             </td>
                                         </tr>
-                                    ) : (
-                                        filteredMembers.map((member) => (
-                                            <tr key={member.id}>
-                                                <td className="px-6 py-4">{member.name}</td>
-                                                <td className="px-6 py-4">{member.email || '-'}</td>
-                                                <td className="px-6 py-4">{member.phone || '-'}</td>
-                                                <td className="px-6 py-4">{member.department || '-'}</td>
-                                                <td className="px-6 py-4">{member.position || '-'}</td>
-                                                <td className="px-6 py-4">{member.joinDate || '-'}</td>
-                                                <td className="px-6 py-4">
-                                                    <button
-                                                        onClick={() => handleDeleteMember(member.id)}
-                                                        className="text-red-600 hover:text-red-900"
-                                                    >
-                                                        삭제
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ))
-                                    )}
+                                    ))}
                                 </tbody>
                             </table>
+                            {filteredMembers.length === 0 && (
+                                <div className="text-center py-8 text-gray-500">
+                                    회원이 없습니다.
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
             );
         }
 
-        // 앱 렌더링
-        try {
-            const root = ReactDOM.createRoot(document.getElementById('root'));
-            root.render(React.createElement(MemberManagementApp));
-        } catch (error) {
-            console.error("렌더링 에러:", error);
-            document.getElementById('root').innerHTML = `
-                <div style="padding: 20px; color: red;">
-                    <h1>렌더링 오류</h1>
-                    <p>${error.message}</p>
-                </div>
-            `;
-        }
+        ReactDOM.render(<App />, document.getElementById('root'));
     </script>
 </body>
 </html>
