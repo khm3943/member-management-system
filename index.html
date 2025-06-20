@@ -4,24 +4,32 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>회원 관리 시스템</title>
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- React -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
-    
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
-    <div id="root"></div>
+    <div id="root">
+        <div style="display: flex; justify-content: center; align-items: center; min-height: 100vh; background-color: #f3f4f6;">
+            <div style="text-align: center;">
+                <h1 style="font-size: 24px; font-weight: bold; color: #1f2937; margin-bottom: 16px;">회원 관리 시스템</h1>
+                <p style="color: #6b7280;">로딩 중...</p>
+            </div>
+        </div>
+    </div>
 
     <script type="text/babel">
+        // React 컴포넌트
         const { useState, useEffect } = React;
-        const { Search, UserPlus, Users, X, Download, AlertCircle } = lucide;
 
-        // Firebase 설정 - 실제 프로젝트 설정값
+        // Firebase 설정
         const firebaseConfig = {
             apiKey: "AIzaSyBQKKW65qAGNpa1G51hf2ntRw10hZNg8s0",
             authDomain: "member-system-d4684.firebaseapp.com",
@@ -32,15 +40,45 @@
         };
 
         // Firebase 초기화
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
+        let db = null;
+        try {
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.firestore();
+            console.log("Firebase 초기화 성공");
+        } catch (error) {
+            console.error("Firebase 초기화 실패:", error);
+        }
 
+        // 아이콘 컴포넌트들
+        const PlusIcon = () => (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+        );
+
+        const SearchIcon = () => (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+            </svg>
+        );
+
+        const XIcon = () => (
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        );
+
+        // 메인 컴포넌트
         function MemberManagementApp() {
             const [members, setMembers] = useState([]);
             const [showAddForm, setShowAddForm] = useState(false);
             const [searchTerm, setSearchTerm] = useState('');
             const [filterDepartment, setFilterDepartment] = useState('전체');
             const [loading, setLoading] = useState(true);
+            const [error, setError] = useState(null);
             const [formData, setFormData] = useState({
                 name: '',
                 email: '',
@@ -50,23 +88,40 @@
                 joinDate: new Date().toISOString().split('T')[0]
             });
 
-            // Firebase에서 데이터 실시간 동기화
+            // Firebase 데이터 로드
             useEffect(() => {
-                const unsubscribe = db.collection('members')
-                    .orderBy('createdAt', 'desc')
-                    .onSnapshot((snapshot) => {
-                        const membersData = [];
-                        snapshot.forEach((doc) => {
-                            membersData.push({ id: doc.id, ...doc.data() });
-                        });
-                        setMembers(membersData);
-                        setLoading(false);
-                    }, (error) => {
-                        console.error("데이터 로드 오류:", error);
-                        setLoading(false);
-                    });
+                if (!db) {
+                    setError("Firebase 연결 실패");
+                    setLoading(false);
+                    return;
+                }
 
-                return () => unsubscribe();
+                try {
+                    const unsubscribe = db.collection('members')
+                        .orderBy('createdAt', 'desc')
+                        .onSnapshot(
+                            (snapshot) => {
+                                const membersData = [];
+                                snapshot.forEach((doc) => {
+                                    membersData.push({ id: doc.id, ...doc.data() });
+                                });
+                                setMembers(membersData);
+                                setLoading(false);
+                                setError(null);
+                            },
+                            (err) => {
+                                console.error("Firestore 에러:", err);
+                                setError("데이터 로드 실패: " + err.message);
+                                setLoading(false);
+                            }
+                        );
+
+                    return () => unsubscribe();
+                } catch (err) {
+                    console.error("Setup 에러:", err);
+                    setError("초기화 실패: " + err.message);
+                    setLoading(false);
+                }
             }, []);
 
             // 회원 추가
@@ -82,7 +137,6 @@
                         createdAt: firebase.firestore.FieldValue.serverTimestamp()
                     });
 
-                    // 폼 초기화
                     setFormData({
                         name: '',
                         email: '',
@@ -93,20 +147,18 @@
                     });
                     setShowAddForm(false);
                 } catch (error) {
-                    alert('회원 추가 중 오류가 발생했습니다.');
-                    console.error(error);
+                    alert('회원 추가 실패: ' + error.message);
                 }
             };
 
             // 회원 삭제
             const handleDeleteMember = async (id) => {
-                if (!window.confirm('정말로 이 회원을 삭제하시겠습니까?')) return;
-
-                try {
-                    await db.collection('members').doc(id).delete();
-                } catch (error) {
-                    alert('회원 삭제 중 오류가 발생했습니다.');
-                    console.error(error);
+                if (window.confirm('정말로 이 회원을 삭제하시겠습니까?')) {
+                    try {
+                        await db.collection('members').doc(id).delete();
+                    } catch (error) {
+                        alert('회원 삭제 실패: ' + error.message);
+                    }
                 }
             };
 
@@ -134,10 +186,10 @@
                 link.click();
             };
 
-            // 부서 목록 추출
+            // 부서 목록
             const departments = ['전체', ...new Set(members.map(m => m.department).filter(d => d))];
 
-            // 필터링된 회원 목록
+            // 필터링
             const filteredMembers = members.filter(member => {
                 const matchesSearch = 
                     member.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -147,6 +199,7 @@
                 return matchesSearch && matchesDepartment;
             });
 
+            // 로딩 화면
             if (loading) {
                 return (
                     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -158,6 +211,20 @@
                 );
             }
 
+            // 에러 화면
+            if (error) {
+                return (
+                    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+                        <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md w-full">
+                            <h2 className="text-red-800 font-bold text-lg mb-2">오류 발생</h2>
+                            <p className="text-red-600">{error}</p>
+                            <p className="text-red-600 text-sm mt-2">Firebase 콘솔에서 Firestore 데이터베이스가 활성화되어 있는지 확인해주세요.</p>
+                        </div>
+                    </div>
+                );
+            }
+
+            // 메인 화면
             return (
                 <div className="min-h-screen bg-gray-50 p-4">
                     <div className="max-w-7xl mx-auto">
@@ -165,28 +232,23 @@
                         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
                             <div className="flex justify-between items-center mb-6">
                                 <div>
-                                    <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-3">
-                                        <Users size={36} />
+                                    <h1 className="text-3xl font-bold text-gray-800">
                                         회원 관리 시스템
-                                        <span className="text-sm font-normal text-green-600 bg-green-100 px-2 py-1 rounded">
-                                            실시간 동기화
-                                        </span>
                                     </h1>
-                                    <p className="text-gray-600 mt-2">총 {members.length}명의 회원이 등록되어 있습니다.</p>
+                                    <p className="text-gray-600 mt-2">총 {members.length}명의 회원</p>
                                 </div>
                                 <div className="flex gap-3">
                                     <button
                                         onClick={exportToCSV}
-                                        className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition flex items-center gap-2"
+                                        className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
                                     >
-                                        <Download size={20} />
                                         CSV 내보내기
                                     </button>
                                     <button
                                         onClick={() => setShowAddForm(true)}
-                                        className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition"
+                                        className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
                                     >
-                                        <UserPlus size={20} />
+                                        <PlusIcon />
                                         회원 추가
                                     </button>
                                 </div>
@@ -194,29 +256,29 @@
 
                             {/* 검색 및 필터 */}
                             <div className="flex gap-4 flex-wrap">
-                                <div className="flex-1 min-w-[200px]">
-                                    <div className="relative">
-                                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-                                        <input
-                                            type="text"
-                                            placeholder="이름, 이메일, 전화번호로 검색..."
-                                            value={searchTerm}
-                                            onChange={(e) => setSearchTerm(e.target.value)}
-                                            className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        />
+                                <div className="flex-1 min-w-[200px] relative">
+                                    <SearchIcon />
+                                    <input
+                                        type="text"
+                                        placeholder="검색..."
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        className="w-full pl-10 pr-4 py-2 border rounded-lg"
+                                        style={{ paddingLeft: '40px' }}
+                                    />
+                                    <div style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+                                        <SearchIcon />
                                     </div>
                                 </div>
-                                <div className="min-w-[150px]">
-                                    <select
-                                        value={filterDepartment}
-                                        onChange={(e) => setFilterDepartment(e.target.value)}
-                                        className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    >
-                                        {departments.map(dept => (
-                                            <option key={dept} value={dept}>{dept}</option>
-                                        ))}
-                                    </select>
-                                </div>
+                                <select
+                                    value={filterDepartment}
+                                    onChange={(e) => setFilterDepartment(e.target.value)}
+                                    className="px-4 py-2 border rounded-lg"
+                                >
+                                    {departments.map(dept => (
+                                        <option key={dept} value={dept}>{dept}</option>
+                                    ))}
+                                </select>
                             </div>
                         </div>
 
@@ -226,91 +288,65 @@
                                 <div className="bg-white rounded-lg p-6 w-full max-w-md">
                                     <div className="flex justify-between items-center mb-4">
                                         <h2 className="text-xl font-bold">새 회원 추가</h2>
-                                        <button
-                                            onClick={() => setShowAddForm(false)}
-                                            className="text-gray-500 hover:text-gray-700"
-                                        >
-                                            <X size={24} />
+                                        <button onClick={() => setShowAddForm(false)}>
+                                            <XIcon />
                                         </button>
                                     </div>
                                     
                                     <div className="space-y-4">
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-1">이름 *</label>
-                                            <input
-                                                type="text"
-                                                value={formData.name}
-                                                onChange={(e) => setFormData({...formData, name: e.target.value})}
-                                                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                placeholder="필수 입력"
-                                            />
-                                        </div>
-                                        
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-1">이메일</label>
-                                            <input
-                                                type="email"
-                                                value={formData.email}
-                                                onChange={(e) => setFormData({...formData, email: e.target.value})}
-                                                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                placeholder="example@email.com"
-                                            />
-                                        </div>
-                                        
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-1">전화번호</label>
-                                            <input
-                                                type="tel"
-                                                value={formData.phone}
-                                                onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                                                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                placeholder="010-1234-5678"
-                                            />
-                                        </div>
-                                        
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-1">부서</label>
-                                            <input
-                                                type="text"
-                                                value={formData.department}
-                                                onChange={(e) => setFormData({...formData, department: e.target.value})}
-                                                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                placeholder="예: 개발팀, 마케팅팀"
-                                            />
-                                        </div>
-                                        
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-1">직급</label>
-                                            <input
-                                                type="text"
-                                                value={formData.position}
-                                                onChange={(e) => setFormData({...formData, position: e.target.value})}
-                                                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                placeholder="예: 사원, 대리, 과장"
-                                            />
-                                        </div>
-                                        
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-1">가입일</label>
-                                            <input
-                                                type="date"
-                                                value={formData.joinDate}
-                                                onChange={(e) => setFormData({...formData, joinDate: e.target.value})}
-                                                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            />
-                                        </div>
+                                        <input
+                                            type="text"
+                                            placeholder="이름 (필수)"
+                                            value={formData.name}
+                                            onChange={(e) => setFormData({...formData, name: e.target.value})}
+                                            className="w-full px-3 py-2 border rounded-lg"
+                                        />
+                                        <input
+                                            type="email"
+                                            placeholder="이메일"
+                                            value={formData.email}
+                                            onChange={(e) => setFormData({...formData, email: e.target.value})}
+                                            className="w-full px-3 py-2 border rounded-lg"
+                                        />
+                                        <input
+                                            type="tel"
+                                            placeholder="전화번호"
+                                            value={formData.phone}
+                                            onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                                            className="w-full px-3 py-2 border rounded-lg"
+                                        />
+                                        <input
+                                            type="text"
+                                            placeholder="부서"
+                                            value={formData.department}
+                                            onChange={(e) => setFormData({...formData, department: e.target.value})}
+                                            className="w-full px-3 py-2 border rounded-lg"
+                                        />
+                                        <input
+                                            type="text"
+                                            placeholder="직급"
+                                            value={formData.position}
+                                            onChange={(e) => setFormData({...formData, position: e.target.value})}
+                                            className="w-full px-3 py-2 border rounded-lg"
+                                        />
+                                        <input
+                                            type="date"
+                                            value={formData.joinDate}
+                                            onChange={(e) => setFormData({...formData, joinDate: e.target.value})}
+                                            className="w-full px-3 py-2 border rounded-lg"
+                                        />
                                     </div>
                                     
                                     <div className="flex gap-3 mt-6">
                                         <button
                                             onClick={handleAddMember}
-                                            className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition"
+                                            className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700"
                                         >
                                             추가하기
                                         </button>
                                         <button
                                             onClick={() => setShowAddForm(false)}
-                                            className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 transition"
+                                            className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300"
                                         >
                                             취소
                                         </button>
@@ -319,66 +355,49 @@
                             </div>
                         )}
 
-                        {/* 회원 목록 테이블 */}
+                        {/* 회원 목록 */}
                         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-                            <div className="overflow-x-auto">
-                                <table className="w-full">
-                                    <thead className="bg-gray-50 border-b">
+                            <table className="w-full">
+                                <thead className="bg-gray-50 border-b">
+                                    <tr>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">이름</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">이메일</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">전화번호</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">부서</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">직급</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">가입일</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">작업</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-200">
+                                    {filteredMembers.length === 0 ? (
                                         <tr>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">이름</th>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">이메일</th>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">전화번호</th>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">부서</th>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">직급</th>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">가입일</th>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">작업</th>
+                                            <td colSpan="7" className="px-6 py-12 text-center text-gray-500">
+                                                회원이 없습니다.
+                                            </td>
                                         </tr>
-                                    </thead>
-                                    <tbody className="bg-white divide-y divide-gray-200">
-                                        {filteredMembers.length === 0 ? (
-                                            <tr>
-                                                <td colSpan="7" className="px-6 py-12 text-center text-gray-500">
-                                                    {members.length === 0 ? '등록된 회원이 없습니다.' : '검색 결과가 없습니다.'}
+                                    ) : (
+                                        filteredMembers.map((member) => (
+                                            <tr key={member.id}>
+                                                <td className="px-6 py-4">{member.name}</td>
+                                                <td className="px-6 py-4">{member.email || '-'}</td>
+                                                <td className="px-6 py-4">{member.phone || '-'}</td>
+                                                <td className="px-6 py-4">{member.department || '-'}</td>
+                                                <td className="px-6 py-4">{member.position || '-'}</td>
+                                                <td className="px-6 py-4">{member.joinDate || '-'}</td>
+                                                <td className="px-6 py-4">
+                                                    <button
+                                                        onClick={() => handleDeleteMember(member.id)}
+                                                        className="text-red-600 hover:text-red-900"
+                                                    >
+                                                        삭제
+                                                    </button>
                                                 </td>
                                             </tr>
-                                        ) : (
-                                            filteredMembers.map((member) => (
-                                                <tr key={member.id} className="hover:bg-gray-50">
-                                                    <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">{member.name}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-gray-500">{member.email || '-'}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-gray-500">{member.phone || '-'}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap">
-                                                        <span className="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
-                                                            {member.department || '미지정'}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-gray-500">{member.position || '-'}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-gray-500">{member.joinDate || '-'}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap">
-                                                        <button
-                                                            onClick={() => handleDeleteMember(member.id)}
-                                                            className="text-red-600 hover:text-red-900"
-                                                        >
-                                                            삭제
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            ))
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        {/* 사용 안내 */}
-                        <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-                            <h3 className="font-semibold text-blue-900 mb-2">💡 사용 안내</h3>
-                            <ul className="text-sm text-blue-800 space-y-1">
-                                <li>• 모든 사용자가 실시간으로 같은 데이터를 보고 수정할 수 있습니다</li>
-                                <li>• 회원 추가/삭제가 즉시 모든 사용자에게 반영됩니다</li>
-                                <li>• CSV 내보내기로 엑셀에서 열 수 있는 파일을 다운로드할 수 있습니다</li>
-                                <li>• 검색과 부서별 필터링으로 원하는 회원을 빠르게 찾을 수 있습니다</li>
-                            </ul>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
@@ -386,7 +405,18 @@
         }
 
         // 앱 렌더링
-        ReactDOM.render(<MemberManagementApp />, document.getElementById('root'));
+        try {
+            const root = ReactDOM.createRoot(document.getElementById('root'));
+            root.render(React.createElement(MemberManagementApp));
+        } catch (error) {
+            console.error("렌더링 에러:", error);
+            document.getElementById('root').innerHTML = `
+                <div style="padding: 20px; color: red;">
+                    <h1>렌더링 오류</h1>
+                    <p>${error.message}</p>
+                </div>
+            `;
+        }
     </script>
 </body>
 </html>
