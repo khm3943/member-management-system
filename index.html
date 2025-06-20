@@ -26,13 +26,13 @@
             appId: "1:904998203480:web:6686cdc25fff8bdae75a2d"
         });
         const db = firebase.firestore();
-
         const positions = ['없음', '탑', '정글', '미드', '원딜', '서폿'];
 
         function App() {
             const [members, setMembers] = useState([]);
             const [loading, setLoading] = useState(true);
             const [showForm, setShowForm] = useState(false);
+            const [editId, setEditId] = useState(null);
             const [search, setSearch] = useState('');
             const [form, setForm] = useState({
                 name: '', nickname: '', birthYear: '', tier: '',
@@ -52,13 +52,26 @@
                     alert('이름과 닉네임은 필수입니다!');
                     return;
                 }
-                await db.collection('lol_members').add({
-                    ...form,
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                });
+                
+                if (editId) {
+                    await db.collection('lol_members').doc(editId).update(form);
+                } else {
+                    await db.collection('lol_members').add({
+                        ...form,
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                }
+                
                 setForm({ name: '', nickname: '', birthYear: '', tier: '', 
                          mainPosition: '없음', subPosition: '없음', note: '' });
                 setShowForm(false);
+                setEditId(null);
+            };
+
+            const handleEdit = (member) => {
+                setForm(member);
+                setEditId(member.id);
+                setShowForm(true);
             };
 
             const handleDelete = async (id) => {
@@ -130,7 +143,12 @@
                                     className="flex-1 px-3 py-2 border rounded"
                                 />
                                 <button
-                                    onClick={() => setShowForm(true)}
+                                    onClick={() => {
+                                        setForm({ name: '', nickname: '', birthYear: '', tier: '', 
+                                                 mainPosition: '없음', subPosition: '없음', note: '' });
+                                        setEditId(null);
+                                        setShowForm(true);
+                                    }}
                                     className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
                                 >
                                     추가
@@ -145,7 +163,9 @@
                         {showForm && (
                             <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
                                 <div className="bg-white rounded-lg p-4 w-full max-w-md">
-                                    <h2 className="text-lg font-bold mb-3">회원 추가</h2>
+                                    <h2 className="text-lg font-bold mb-3">
+                                        {editId ? '회원 수정' : '회원 추가'}
+                                    </h2>
                                     <div className="space-y-2">
                                         <input
                                             placeholder="이름*"
@@ -203,10 +223,13 @@
                                             onClick={handleSubmit}
                                             className="flex-1 bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
                                         >
-                                            저장
+                                            {editId ? '수정' : '저장'}
                                         </button>
                                         <button
-                                            onClick={() => setShowForm(false)}
+                                            onClick={() => {
+                                                setShowForm(false);
+                                                setEditId(null);
+                                            }}
                                             className="flex-1 bg-gray-300 py-2 rounded hover:bg-gray-400"
                                         >
                                             취소
@@ -252,6 +275,12 @@
                                                     </a>
                                                 </td>
                                                 <td className="px-3 py-2">
+                                                    <button
+                                                        onClick={() => handleEdit(m)}
+                                                        className="text-green-600 hover:text-green-800 text-xs mr-2"
+                                                    >
+                                                        수정
+                                                    </button>
                                                     <button
                                                         onClick={() => handleDelete(m.id)}
                                                         className="text-red-600 hover:text-red-800 text-xs"
