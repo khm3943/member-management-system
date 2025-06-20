@@ -1,2 +1,17 @@
-# member-management-system
-Firebase 연동 회원관리 시스템
+# 회원 관리 시스템
+
+Firebase를 활용한 실시간 회원 관리 시스템입니다.
+
+## 기능
+- 회원 등록/삭제
+- 실시간 데이터 동기화
+- 검색 및 필터링
+- CSV 내보내기
+
+## 사용 방법
+1. Firebase 프로젝트 생성
+2. index.html의 firebaseConfig 수정
+3. 웹사이트 배포
+
+## 데모
+[여기에 배포된 사이트 주소 입력]
