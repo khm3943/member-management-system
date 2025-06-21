@@ -69,10 +69,17 @@ function App() {
         return sortableMembers;
     }, [members, sortConfig]);
 
-    // 필터링
-    const filtered = sortedMembers.filter(m => 
-        m.name.includes(search) || m.nickname.toLowerCase().includes(search.toLowerCase())
-    );
+    // 필터링 - 이름, 닉네임, 생년, 티어, 주라인 검색
+    const filtered = sortedMembers.filter(m => {
+        const searchLower = search.toLowerCase();
+        return (
+            m.name.includes(search) ||
+            m.nickname.toLowerCase().includes(searchLower) ||
+            (m.birthYear && m.birthYear.toString().includes(search)) ||
+            (m.tier && m.tier.toLowerCase().includes(searchLower)) ||
+            (m.mainPosition && m.mainPosition.includes(search))
+        );
+    });
 
     // 정렬 아이콘 컴포넌트
     const SortIcon = ({ column }) => {
