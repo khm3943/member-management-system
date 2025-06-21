@@ -1,0 +1,68 @@
+/* 기본 스타일 */
+.cb { margin-right: 8px; }
+.modal { 
+    position: fixed; 
+    inset: 0; 
+    background: rgba(0,0,0,0.5); 
+    display: flex; 
+    align-items: center; 
+    justify-content: center; 
+    padding: 16px; 
+    z-index: 50; 
+}
+.btn { 
+    padding: 8px 16px; 
+    border-radius: 4px; 
+    cursor: pointer; 
+    transition: all 0.2s;
+}
+.btn-blue { background: #2563eb; color: white; }
+.btn-blue:hover { background: #1d4ed8; }
+.btn-green { background: #16a34a; color: white; }
+.btn-green:hover { background: #15803d; }
+.btn-gray { background: #d1d5db; }
+.btn-gray:hover { background: #9ca3af; }
+.link { color: #2563eb; text-decoration: none; }
+.link:hover { text-decoration: underline; }
+
+/* 티어 색상 */
+.tier {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: white;
+}
+.tier-unranked { background: #6b7280; }
+.tier-gold { background: #fbbf24; color: #000; }
+.tier-platinum { background: #10b981; }
+.tier-emerald { background: #10d6a4; color: #000; }
+.tier-diamond { background: #3b82f6; }
+.tier-master { background: #8b5cf6; }
+.tier-grandmaster { background: #dc2626; }
+.tier-challenger { background: #06b6d4; }
+
+/* 테이블 스타일 */
+table { border-collapse: collapse; }
+th { font-weight: 600; text-align: left; }
+td, th { padding: 8px 12px; }
+tr:hover { background-color: #f9fafb; }
+
+/* 폼 스타일 */
+input, select, textarea {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+}
+input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* 반응형 */
+@media (max-width: 768px) {
+    .overflow-x-auto { overflow-x: auto; }
+    table { min-width: 700px; }
+}
