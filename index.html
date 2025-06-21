@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LOL 회원 관리</title>
+    <title>LOL 관리 시스템</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -15,7 +15,15 @@
 </head>
 <body>
     <div id="root"></div>
+    <!-- 설정 및 유틸리티 -->
     <script src="config.js"></script>
+    <script src="utils.js"></script>
+    
+    <!-- 각 페이지 컴포넌트 -->
+    <script type="text/babel" src="pages/MemberManagement.js"></script>
+    <script type="text/babel" src="pages/TeamBuilder.js"></script>
+    
+    <!-- 메인 앱 -->
     <script type="text/babel" src="app.js"></script>
 </body>
 </html>
