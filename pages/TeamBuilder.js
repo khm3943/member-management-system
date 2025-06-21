@@ -5,7 +5,9 @@ function TeamBuilder() {
     const [selectedMembers, setSelectedMembers] = useState([]);
     const [teamCount, setTeamCount] = useState(null);
     const [teams, setTeams] = useState([]);
-    const [stage, setStage] = useState('selectCount'); // 'selectCount' or 'selectMembers'
+    const [stage, setStage] = useState('selectCount');
+    const [draggedMember, setDraggedMember] = useState(null);
+    const [draggedFromTeam, setDraggedFromTeam] = useState(null);
 
     useEffect(() => {
         return db.collection('lol_members').orderBy('tier', 'desc')
@@ -24,12 +26,12 @@ function TeamBuilder() {
     const selectTeamCount = (count) => {
         setTeamCount(count);
         setStage('selectMembers');
-        setTeams(Array(count * 2).fill([])); // 각 팀당 2개 (팀1, 팀2)
+        setTeams(Array(count * 2).fill([]));
     };
 
     // 멤버 선택/해제
     const toggleMember = (member) => {
-        const maxMembers = teamCount * 10; // 팀당 10명
+        const maxMembers = teamCount * 10;
         
         if (selectedMembers.find(m => m.id === member.id)) {
             setSelectedMembers(selectedMembers.filter(m => m.id !== member.id));
@@ -50,19 +52,16 @@ function TeamBuilder() {
             return;
         }
 
-        // 멤버들을 티어 점수로 정렬
         const sortedMembers = [...selectedMembers].sort((a, b) => 
             getTierScore(b.tier) - getTierScore(a.tier)
         );
 
-        // 팀 배분 (snake draft 방식)
         const newTeams = Array(teamCount * 2).fill(null).map(() => []);
         
         sortedMembers.forEach((member, index) => {
             const round = Math.floor(index / (teamCount * 2));
             const pick = index % (teamCount * 2);
             
-            // 홀수 라운드는 역순으로
             if (round % 2 === 0) {
                 newTeams[pick].push(member);
             } else {
@@ -71,6 +70,41 @@ function TeamBuilder() {
         });
 
         setTeams(newTeams);
+    };
+
+    // 드래그 시작
+    const handleDragStart = (e, member, teamIndex) => {
+        setDraggedMember(member);
+        setDraggedFromTeam(teamIndex);
+        e.dataTransfer.effectAllowed = 'move';
+    };
+
+    // 드래그 오버 (드롭 허용)
+    const handleDragOver = (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+    };
+
+    // 드롭
+    const handleDrop = (e, toTeamIndex) => {
+        e.preventDefault();
+        
+        if (draggedMember && draggedFromTeam !== null && draggedFromTeam !== toTeamIndex) {
+            const newTeams = [...teams];
+            
+            // 원래 팀에서 제거
+            newTeams[draggedFromTeam] = newTeams[draggedFromTeam].filter(
+                m => m.id !== draggedMember.id
+            );
+            
+            // 새 팀에 추가
+            newTeams[toTeamIndex] = [...newTeams[toTeamIndex], draggedMember];
+            
+            setTeams(newTeams);
+        }
+        
+        setDraggedMember(null);
+        setDraggedFromTeam(null);
     };
 
     // 초기화
@@ -123,6 +157,7 @@ function TeamBuilder() {
                         <h1 className="text-2xl font-bold">{teamCount}팀 짜기</h1>
                         <p className="text-gray-600">
                             {teamCount * 10}명을 선택하세요 (현재: {selectedMembers.length}명)
+                            {teams.some(t => t.length > 0) && " - 드래그로 팀원 이동 가능"}
                         </p>
                     </div>
                     <button onClick={reset} className="btn btn-gray">
@@ -191,13 +226,27 @@ function TeamBuilder() {
                             const teamColor = teamNumber === 1 ? 'blue' : 'red';
                             
                             return (
-                                <div key={index} className="bg-white rounded-lg shadow p-4">
+                                <div 
+                                    key={index} 
+                                    className={`bg-white rounded-lg shadow p-4 ${
+                                        draggedFromTeam !== null && draggedFromTeam !== index 
+                                            ? 'ring-2 ring-green-400' 
+                                            : ''
+                                    }`}
+                                    onDragOver={handleDragOver}
+                                    onDrop={(e) => handleDrop(e, index)}
+                                >
                                     <h2 className={`font-bold mb-3 text-${teamColor}-600`}>
                                         매치 {matchNumber} - 팀 {teamNumber}
                                     </h2>
-                                    <div className="space-y-2">
+                                    <div className="space-y-2 min-h-[200px]">
                                         {team.map((member, idx) => (
-                                            <div key={member.id} className={`p-2 bg-${teamColor}-50 rounded`}>
+                                            <div 
+                                                key={member.id} 
+                                                className={`p-2 bg-${teamColor}-50 rounded cursor-move hover:shadow-md transition`}
+                                                draggable
+                                                onDragStart={(e) => handleDragStart(e, member, index)}
+                                            >
                                                 <div className="flex justify-between">
                                                     <span>
                                                         {idx + 1}. {member.name}
@@ -217,13 +266,39 @@ function TeamBuilder() {
                                     </div>
                                     {team.length > 0 && (
                                         <div className="mt-3 pt-3 border-t text-sm text-gray-600">
-                                            평균 티어 점수: {(team.reduce((sum, m) => sum + getTierScore(m.tier), 0) / team.length).toFixed(1)}
+                                            <div>인원: {team.length}명</div>
+                                            <div>평균 티어 점수: {(team.reduce((sum, m) => sum + getTierScore(m.tier), 0) / team.length).toFixed(1)}</div>
                                         </div>
                                     )}
                                 </div>
                             );
                         })}
                     </div>
+
+                    {/* 팀 밸런스 요약 */}
+                    {teams.some(t => t.length > 0) && (
+                        <div className="mt-4 bg-gray-100 rounded-lg p-4">
+                            <h3 className="font-bold mb-2">팀 밸런스 요약</h3>
+                            <div className="grid grid-cols-2 gap-4">
+                                {Array.from({ length: teamCount }).map((_, matchIdx) => {
+                                    const team1 = teams[matchIdx * 2] || [];
+                                    const team2 = teams[matchIdx * 2 + 1] || [];
+                                    const team1Score = team1.reduce((sum, m) => sum + getTierScore(m.tier), 0) / (team1.length || 1);
+                                    const team2Score = team2.reduce((sum, m) => sum + getTierScore(m.tier), 0) / (team2.length || 1);
+                                    const diff = Math.abs(team1Score - team2Score);
+                                    
+                                    return (
+                                        <div key={matchIdx} className="text-sm">
+                                            <span className="font-medium">매치 {matchIdx + 1}:</span>
+                                            <span className={`ml-2 ${diff > 0.5 ? 'text-red-600' : 'text-green-600'}`}>
+                                                차이: {diff.toFixed(2)}점
+                                            </span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
 
                     {/* 선택된 멤버 요약 */}
                     {selectedMembers.length > 0 && teams.every(t => t.length === 0) && (
