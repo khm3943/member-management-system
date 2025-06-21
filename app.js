@@ -9,6 +9,7 @@ function App() {
     const [showForm, setShowForm] = useState(false);
     const [editId, setEditId] = useState(null);
     const [search, setSearch] = useState('');
+    const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
     const [form, setForm] = useState({
         name: '', nickname: '', birthYear: '', 
         tierName: 'Unranked', tierNumber: '',
@@ -22,6 +23,66 @@ function App() {
                 setLoading(false);
             });
     }, []);
+
+    // 정렬 함수
+    const handleSort = (key) => {
+        let direction = 'asc';
+        if (sortConfig.key === key && sortConfig.direction === 'asc') {
+            direction = 'desc';
+        }
+        setSortConfig({ key, direction });
+    };
+
+    // 정렬된 데이터
+    const sortedMembers = React.useMemo(() => {
+        let sortableMembers = [...members];
+        if (sortConfig.key) {
+            sortableMembers.sort((a, b) => {
+                let aValue = a[sortConfig.key] || '';
+                let bValue = b[sortConfig.key] || '';
+                
+                // 티어 정렬을 위한 특별 처리
+                if (sortConfig.key === 'tier') {
+                    const tierOrder = ['Unranked', 'Gold', 'Platinum', 'Emerald', 'Diamond', 'Master', 'GrandMaster', 'Challenger'];
+                    const getTierValue = (tier) => {
+                        const match = tier?.match(/([a-zA-Z]+)(\d*)/);
+                        const tierName = match ? match[1] : 'Unranked';
+                        const tierNumber = match ? parseInt(match[2]) || 0 : 0;
+                        const tierIndex = tierOrder.findIndex(t => t.toLowerCase() === tierName.toLowerCase());
+                        return tierIndex * 10 + (10 - tierNumber); // 높은 숫자가 더 낮은 티어
+                    };
+                    aValue = getTierValue(aValue);
+                    bValue = getTierValue(bValue);
+                }
+                
+                // 숫자 비교
+                if (!isNaN(aValue) && !isNaN(bValue)) {
+                    return sortConfig.direction === 'asc' ? aValue - bValue : bValue - aValue;
+                }
+                
+                // 문자열 비교
+                if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+                if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+        return sortableMembers;
+    }, [members, sortConfig]);
+
+    // 필터링
+    const filtered = sortedMembers.filter(m => 
+        m.name.includes(search) || m.nickname.toLowerCase().includes(search.toLowerCase())
+    );
+
+    // 정렬 아이콘 컴포넌트
+    const SortIcon = ({ column }) => {
+        if (sortConfig.key !== column) {
+            return <span className="text-gray-400 ml-1">↕</span>;
+        }
+        return sortConfig.direction === 'asc' ? 
+            <span className="text-blue-600 ml-1">↑</span> : 
+            <span className="text-blue-600 ml-1">↓</span>;
+    };
 
     const handleSubmit = async () => {
         if (!form.name || !form.nickname) {
@@ -58,7 +119,6 @@ function App() {
     };
 
     const handleEdit = (member) => {
-        // 티어 분리 (예: Diamond4 -> Diamond, 4)
         const tierMatch = member.tier?.match(/([a-zA-Z]+)(\d*)/);
         const tierName = tierMatch ? tierMatch[1] : 'Unranked';
         const tierNumber = tierMatch ? tierMatch[2] : '';
@@ -97,7 +157,6 @@ function App() {
                     const mainIdx = positions.findIndex(p => p === '●');
                     const subIndices = positions.map((p, idx) => p === '○' ? idx : -1).filter(idx => idx >= 0);
                     
-                    // L열(11) + M열(12) 조합
                     const tierName = row[11] || 'Unranked';
                     const tierNumber = row[12] || '';
                     
@@ -126,7 +185,7 @@ function App() {
 
     const exportCSV = () => {
         const headers = ['이름', '닉네임', '생년', '티어', '주라인', '부라인', '비고'];
-        const data = members.map(m => [
+        const data = filtered.map(m => [
             m.name,
             m.nickname,
             m.birthYear || '',
@@ -163,10 +222,6 @@ function App() {
         }
         setForm({...form, subPositions: subs});
     };
-
-    const filtered = members.filter(m => 
-        m.name.includes(search) || m.nickname.toLowerCase().includes(search.toLowerCase())
-    );
 
     if (loading) return <div className="flex justify-center items-center h-screen">로딩중...</div>;
 
@@ -270,12 +325,24 @@ function App() {
                         <table className="w-full text-sm">
                             <thead className="bg-gray-50">
                                 <tr>
-                                    <th>이름</th>
-                                    <th>닉네임</th>
-                                    <th>생년</th>
-                                    <th>티어</th>
-                                    <th>주라인</th>
-                                    <th>부라인</th>
+                                    <th className="cursor-pointer hover:bg-gray-100" onClick={() => handleSort('name')}>
+                                        이름 <SortIcon column="name" />
+                                    </th>
+                                    <th className="cursor-pointer hover:bg-gray-100" onClick={() => handleSort('nickname')}>
+                                        닉네임 <SortIcon column="nickname" />
+                                    </th>
+                                    <th className="cursor-pointer hover:bg-gray-100" onClick={() => handleSort('birthYear')}>
+                                        생년 <SortIcon column="birthYear" />
+                                    </th>
+                                    <th className="cursor-pointer hover:bg-gray-100" onClick={() => handleSort('tier')}>
+                                        티어 <SortIcon column="tier" />
+                                    </th>
+                                    <th className="cursor-pointer hover:bg-gray-100" onClick={() => handleSort('mainPosition')}>
+                                        주라인 <SortIcon column="mainPosition" />
+                                    </th>
+                                    <th className="cursor-pointer hover:bg-gray-100" onClick={() => handleSort('subPositions')}>
+                                        부라인 <SortIcon column="subPositions" />
+                                    </th>
                                     <th>비고</th>
                                     <th>OP.GG</th>
                                     <th>작업</th>
