@@ -6,6 +6,7 @@ function MemberManagement() {
     const [editId, setEditId] = useState(null);
     const [search, setSearch] = useState('');
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+    const [editingTierId, setEditingTierId] = useState(null); // 티어 편집 중인 회원 ID
     const [form, setForm] = useState({
         name: '', nickname: '', birthYear: '', 
         tierName: 'Unranked', tierNumber: '',
@@ -19,6 +20,27 @@ function MemberManagement() {
                 setLoading(false);
             });
     }, []);
+
+    // 티어 인라인 수정
+    const handleTierChange = async (memberId, newTier) => {
+        try {
+            // 티어 이름과 숫자 분리
+            const tierMatch = newTier.match(/([a-zA-Z]+)(\d*)/);
+            const tierName = tierMatch ? tierMatch[1] : 'Unranked';
+            const tierNumber = tierMatch ? tierMatch[2] : '';
+            
+            await db.collection('lol_members').doc(memberId).update({
+                tier: newTier,
+                tierName: tierName,
+                tierNumber: tierNumber
+            });
+            
+            setEditingTierId(null);
+        } catch (error) {
+            alert('티어 수정 중 오류가 발생했습니다.');
+            console.error(error);
+        }
+    };
 
     // 정렬 함수
     const handleSort = (key) => {
@@ -333,9 +355,28 @@ function MemberManagement() {
                                     <td className="font-mono text-xs">{m.nickname}</td>
                                     <td>{m.birthYear}</td>
                                     <td>
-                                        <span className={`tier ${getTierClass(m.tierName || m.tier)}`}>
-                                            {m.tier || '-'}
-                                        </span>
+                                        {editingTierId === m.id ? (
+                                            <select
+                                                className={`tier ${getTierClass(m.tier)} cursor-pointer`}
+                                                value={m.tier || 'Unranked'}
+                                                onChange={(e) => handleTierChange(m.id, e.target.value)}
+                                                onBlur={() => setEditingTierId(null)}
+                                                autoFocus
+                                            >
+                                                <option value="Unranked">언랭</option>
+                                                {getTierOptions().map(tier => (
+                                                    <option key={tier} value={tier}>{tier}</option>
+                                                ))}
+                                            </select>
+                                        ) : (
+                                            <span 
+                                                className={`tier ${getTierClass(m.tier)} cursor-pointer hover:ring-2 hover:ring-blue-400`}
+                                                onClick={() => setEditingTierId(m.id)}
+                                                title="클릭하여 수정"
+                                            >
+                                                {m.tier || '-'}
+                                            </span>
+                                        )}
                                     </td>
                                     <td>{m.mainPosition}</td>
                                     <td>{m.subPositions || '-'}</td>
