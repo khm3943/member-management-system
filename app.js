@@ -1,15 +1,7 @@
 const { useState, useEffect } = React;
 
-firebase.initializeApp({
-    apiKey: "AIzaSyBQKKW65qAGNpa1G51hf2ntRw10hZNg8s0",
-    authDomain: "member-system-d4684.firebaseapp.com",
-    projectId: "member-system-d4684",
-    storageBucket: "member-system-d4684.firebasestorage.app",
-    messagingSenderId: "904998203480",
-    appId: "1:904998203480:web:6686cdc25fff8bdae75a2d"
-});
+firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
-const positions = ['탑', '정글', '미드', '원딜', '서폿'];
 
 function App() {
     const [members, setMembers] = useState([]);
@@ -18,7 +10,8 @@ function App() {
     const [editId, setEditId] = useState(null);
     const [search, setSearch] = useState('');
     const [form, setForm] = useState({
-        name: '', nickname: '', birthYear: '', tier: '',
+        name: '', nickname: '', birthYear: '', 
+        tierName: 'Unranked', tierNumber: '',
         mainPosition: '없음', subPositions: [], note: ''
     });
 
@@ -38,6 +31,7 @@ function App() {
         
         const data = {
             ...form,
+            tier: form.tierName + (form.tierNumber || ''),
             subPositions: form.subPositions.join(',')
         };
         
@@ -54,15 +48,25 @@ function App() {
     };
 
     const resetForm = () => {
-        setForm({ name: '', nickname: '', birthYear: '', tier: '', 
-                 mainPosition: '없음', subPositions: [], note: '' });
+        setForm({ 
+            name: '', nickname: '', birthYear: '', 
+            tierName: 'Unranked', tierNumber: '',
+            mainPosition: '없음', subPositions: [], note: '' 
+        });
         setShowForm(false);
         setEditId(null);
     };
 
     const handleEdit = (member) => {
+        // 티어 분리 (예: Diamond4 -> Diamond, 4)
+        const tierMatch = member.tier?.match(/([a-zA-Z]+)(\d*)/);
+        const tierName = tierMatch ? tierMatch[1] : 'Unranked';
+        const tierNumber = tierMatch ? tierMatch[2] : '';
+        
         setForm({
             ...member,
+            tierName,
+            tierNumber,
             subPositions: member.subPositions ? member.subPositions.split(',') : []
         });
         setEditId(member.id);
@@ -81,29 +85,31 @@ function App() {
 
         Papa.parse(file, {
             complete: async (results) => {
-                // 기존 회원 이름 목록
                 const existingNames = new Set(members.map(m => m.name));
                 const batch = db.batch();
                 let count = 0;
                 
                 results.data.forEach((row, i) => {
                     if (i < 13 || !row[1] || !row[2]) return;
-                    
-                    // 중복 체크
                     if (existingNames.has(row[1])) return;
                     
                     const positions = [row[13], row[14], row[15], row[16], row[17]];
                     const mainIdx = positions.findIndex(p => p === '●');
                     const subIndices = positions.map((p, idx) => p === '○' ? idx : -1).filter(idx => idx >= 0);
-                    const posNames = ['탑', '정글', '미드', '원딜', '서폿'];
+                    
+                    // L열(11) + M열(12) 조합
+                    const tierName = row[11] || 'Unranked';
+                    const tierNumber = row[12] || '';
                     
                     batch.set(db.collection('lol_members').doc(), {
                         name: row[1],
                         nickname: row[2],
                         birthYear: row[3] || '',
-                        tier: row[10] || '',
-                        mainPosition: mainIdx >= 0 ? posNames[mainIdx] : '없음',
-                        subPositions: subIndices.map(idx => posNames[idx]).join(','),
+                        tier: tierName + tierNumber,
+                        tierName,
+                        tierNumber,
+                        mainPosition: mainIdx >= 0 ? POSITIONS[mainIdx] : '없음',
+                        subPositions: subIndices.map(idx => POSITIONS[idx]).join(','),
                         note: row[7] || '',
                         createdAt: firebase.firestore.FieldValue.serverTimestamp()
                     });
@@ -169,13 +175,13 @@ function App() {
             <div className="max-w-7xl mx-auto">
                 <div className="bg-white rounded-lg shadow p-4 mb-4">
                     <h1 className="text-2xl font-bold mb-3">LOL 회원 관리 ({members.length}명)</h1>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
                         <input
                             type="text"
                             placeholder="검색..."
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
-                            className="flex-1 px-3 py-2 border rounded"
+                            className="flex-1 min-w-[200px]"
                         />
                         <button onClick={() => { resetForm(); setShowForm(true); }} className="btn btn-blue">추가</button>
                         <label className="btn btn-green">
@@ -188,46 +194,49 @@ function App() {
 
                 {showForm && (
                     <div className="modal">
-                        <div className="bg-white rounded-lg p-4 w-full max-w-md">
+                        <div className="bg-white rounded-lg p-4 w-full max-w-md max-h-[90vh] overflow-y-auto">
                             <h2 className="text-lg font-bold mb-3">{editId ? '회원 수정' : '회원 추가'}</h2>
                             <div className="space-y-2">
                                 <input
                                     placeholder="이름*"
                                     value={form.name}
                                     onChange={(e) => setForm({...form, name: e.target.value})}
-                                    className="w-full px-3 py-2 border rounded"
                                 />
                                 <input
                                     placeholder="닉네임#태그*"
                                     value={form.nickname}
                                     onChange={(e) => setForm({...form, nickname: e.target.value})}
-                                    className="w-full px-3 py-2 border rounded"
+                                />
+                                <input
+                                    placeholder="생년 (예: 1990)"
+                                    value={form.birthYear}
+                                    onChange={(e) => setForm({...form, birthYear: e.target.value})}
                                 />
                                 <div className="grid grid-cols-2 gap-2">
+                                    <select
+                                        value={form.tierName}
+                                        onChange={(e) => setForm({...form, tierName: e.target.value})}
+                                    >
+                                        {TIERS.map(t => (
+                                            <option key={t.name} value={t.name}>{t.ko}</option>
+                                        ))}
+                                    </select>
                                     <input
-                                        placeholder="생년 (예: 1990)"
-                                        value={form.birthYear}
-                                        onChange={(e) => setForm({...form, birthYear: e.target.value})}
-                                        className="px-3 py-2 border rounded"
-                                    />
-                                    <input
-                                        placeholder="티어 (예: Diamond 4)"
-                                        value={form.tier}
-                                        onChange={(e) => setForm({...form, tier: e.target.value})}
-                                        className="px-3 py-2 border rounded"
+                                        placeholder="숫자 (예: 4)"
+                                        value={form.tierNumber}
+                                        onChange={(e) => setForm({...form, tierNumber: e.target.value})}
                                     />
                                 </div>
                                 <select
                                     value={form.mainPosition}
                                     onChange={(e) => setForm({...form, mainPosition: e.target.value})}
-                                    className="w-full px-3 py-2 border rounded"
                                 >
                                     <option value="없음">주라인 선택</option>
-                                    {positions.map(p => <option key={p} value={p}>{p}</option>)}
+                                    {POSITIONS.map(p => <option key={p} value={p}>{p}</option>)}
                                 </select>
                                 <div className="border rounded p-2">
                                     <p className="text-sm mb-1">부라인 (복수 선택):</p>
-                                    {positions.map(p => (
+                                    {POSITIONS.map(p => (
                                         <label key={p} className="inline-block mr-3">
                                             <input
                                                 type="checkbox"
@@ -243,7 +252,6 @@ function App() {
                                     placeholder="비고"
                                     value={form.note}
                                     onChange={(e) => setForm({...form, note: e.target.value})}
-                                    className="w-full px-3 py-2 border rounded"
                                     rows="2"
                                 />
                             </div>
@@ -262,33 +270,43 @@ function App() {
                         <table className="w-full text-sm">
                             <thead className="bg-gray-50">
                                 <tr>
-                                    <th className="px-3 py-2 text-left">이름</th>
-                                    <th className="px-3 py-2 text-left">닉네임</th>
-                                    <th className="px-3 py-2 text-left">생년</th>
-                                    <th className="px-3 py-2 text-left">티어</th>
-                                    <th className="px-3 py-2 text-left">주라인</th>
-                                    <th className="px-3 py-2 text-left">부라인</th>
-                                    <th className="px-3 py-2 text-left">비고</th>
-                                    <th className="px-3 py-2 text-left">OP.GG</th>
-                                    <th className="px-3 py-2 text-left">작업</th>
+                                    <th>이름</th>
+                                    <th>닉네임</th>
+                                    <th>생년</th>
+                                    <th>티어</th>
+                                    <th>주라인</th>
+                                    <th>부라인</th>
+                                    <th>비고</th>
+                                    <th>OP.GG</th>
+                                    <th>작업</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {filtered.map(m => (
-                                    <tr key={m.id} className="border-t hover:bg-gray-50">
-                                        <td className="px-3 py-2">{m.name}</td>
-                                        <td className="px-3 py-2 font-mono text-xs">{m.nickname}</td>
-                                        <td className="px-3 py-2">{m.birthYear}</td>
-                                        <td className="px-3 py-2"><span className="tier">{m.tier || '-'}</span></td>
-                                        <td className="px-3 py-2">{m.mainPosition}</td>
-                                        <td className="px-3 py-2">{m.subPositions || '-'}</td>
-                                        <td className="px-3 py-2 text-xs">{m.note || '-'}</td>
-                                        <td className="px-3 py-2">
-                                            <a href={getOpggLink(m.nickname)} target="_blank" className="link">전적</a>
+                                    <tr key={m.id} className="border-t">
+                                        <td>{m.name}</td>
+                                        <td className="font-mono text-xs">{m.nickname}</td>
+                                        <td>{m.birthYear}</td>
+                                        <td>
+                                            <span className={`tier ${getTierClass(m.tierName || m.tier)}`}>
+                                                {m.tier || '-'}
+                                            </span>
                                         </td>
-                                        <td className="px-3 py-2">
-                                            <button onClick={() => handleEdit(m)} className="text-green-600 mr-2">수정</button>
-                                            <button onClick={() => handleDelete(m.id)} className="text-red-600">삭제</button>
+                                        <td>{m.mainPosition}</td>
+                                        <td>{m.subPositions || '-'}</td>
+                                        <td className="text-xs">{m.note || '-'}</td>
+                                        <td>
+                                            <a href={getOpggLink(m.nickname)} target="_blank" className="link">
+                                                전적
+                                            </a>
+                                        </td>
+                                        <td>
+                                            <button onClick={() => handleEdit(m)} className="text-green-600 mr-2">
+                                                수정
+                                            </button>
+                                            <button onClick={() => handleDelete(m.id)} className="text-red-600">
+                                                삭제
+                                            </button>
                                         </td>
                                     </tr>
                                 ))}
