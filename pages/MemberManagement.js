@@ -6,7 +6,10 @@ function MemberManagement() {
     const [editId, setEditId] = useState(null);
     const [search, setSearch] = useState('');
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
-    const [editingTierId, setEditingTierId] = useState(null); // 티어 편집 중인 회원 ID
+    const [editingTierId, setEditingTierId] = useState(null);
+    const [editingMainPositionId, setEditingMainPositionId] = useState(null);
+    const [editingSubPositionId, setEditingSubPositionId] = useState(null);
+    const [tempSubPositions, setTempSubPositions] = useState([]);
     const [form, setForm] = useState({
         name: '', nickname: '', birthYear: '', 
         tierName: 'Unranked', tierNumber: '',
@@ -24,7 +27,6 @@ function MemberManagement() {
     // 티어 인라인 수정
     const handleTierChange = async (memberId, newTier) => {
         try {
-            // 티어 이름과 숫자 분리
             const tierMatch = newTier.match(/([a-zA-Z]+)(\d*)/);
             const tierName = tierMatch ? tierMatch[1] : 'Unranked';
             const tierNumber = tierMatch ? tierMatch[2] : '';
@@ -38,6 +40,51 @@ function MemberManagement() {
             setEditingTierId(null);
         } catch (error) {
             alert('티어 수정 중 오류가 발생했습니다.');
+            console.error(error);
+        }
+    };
+
+    // 주라인 인라인 수정
+    const handleMainPositionChange = async (memberId, newPosition) => {
+        try {
+            await db.collection('lol_members').doc(memberId).update({
+                mainPosition: newPosition
+            });
+            
+            setEditingMainPositionId(null);
+        } catch (error) {
+            alert('주라인 수정 중 오류가 발생했습니다.');
+            console.error(error);
+        }
+    };
+
+    // 부라인 편집 시작
+    const startEditingSubPositions = (member) => {
+        const currentSubs = member.subPositions ? member.subPositions.split(',').filter(p => p) : [];
+        setTempSubPositions(currentSubs);
+        setEditingSubPositionId(member.id);
+    };
+
+    // 부라인 체크박스 토글
+    const toggleTempSubPosition = (position) => {
+        if (tempSubPositions.includes(position)) {
+            setTempSubPositions(tempSubPositions.filter(p => p !== position));
+        } else {
+            setTempSubPositions([...tempSubPositions, position]);
+        }
+    };
+
+    // 부라인 저장
+    const saveSubPositions = async (memberId) => {
+        try {
+            await db.collection('lol_members').doc(memberId).update({
+                subPositions: tempSubPositions.join(',')
+            });
+            
+            setEditingSubPositionId(null);
+            setTempSubPositions([]);
+        } catch (error) {
+            alert('부라인 수정 중 오류가 발생했습니다.');
             console.error(error);
         }
     };
@@ -210,7 +257,7 @@ function MemberManagement() {
                 m.note || ''
             ])
         };
-        exportToCSV(data, 'LOL회원');
+        exportToCSV(data, '난민클랜원');
     };
 
     const toggleSubPosition = (pos) => {
@@ -229,7 +276,7 @@ function MemberManagement() {
     return (
         <div className="p-6">
             <div className="bg-white rounded-lg shadow p-4 mb-4">
-                <h1 className="text-2xl font-bold mb-3">LOL 회원 관리 ({members.length}명)</h1>
+                <h1 className="text-2xl font-bold mb-3">난민 클랜원 관리 ({members.length}명)</h1>
                 <div className="flex gap-2 flex-wrap">
                     <input
                         type="text"
@@ -250,7 +297,7 @@ function MemberManagement() {
             {showForm && (
                 <div className="modal">
                     <div className="bg-white rounded-lg p-4 w-full max-w-md max-h-[90vh] overflow-y-auto">
-                        <h2 className="text-lg font-bold mb-3">{editId ? '회원 수정' : '회원 추가'}</h2>
+                        <h2 className="text-lg font-bold mb-3">{editId ? '클랜원 수정' : '클랜원 추가'}</h2>
                         <div className="space-y-2">
                             <input
                                 placeholder="이름*"
@@ -378,8 +425,72 @@ function MemberManagement() {
                                             </span>
                                         )}
                                     </td>
-                                    <td>{m.mainPosition}</td>
-                                    <td>{m.subPositions || '-'}</td>
+                                    <td>
+                                        {editingMainPositionId === m.id ? (
+                                            <select
+                                                className="px-2 py-1 border rounded"
+                                                value={m.mainPosition || '없음'}
+                                                onChange={(e) => handleMainPositionChange(m.id, e.target.value)}
+                                                onBlur={() => setEditingMainPositionId(null)}
+                                                autoFocus
+                                            >
+                                                <option value="없음">없음</option>
+                                                {POSITIONS.map(p => (
+                                                    <option key={p} value={p}>{p}</option>
+                                                ))}
+                                            </select>
+                                        ) : (
+                                            <span 
+                                                className="cursor-pointer hover:bg-gray-100 px-2 py-1 rounded"
+                                                onClick={() => setEditingMainPositionId(m.id)}
+                                                title="클릭하여 수정"
+                                            >
+                                                {m.mainPosition || '없음'}
+                                            </span>
+                                        )}
+                                    </td>
+                                    <td>
+                                        {editingSubPositionId === m.id ? (
+                                            <div className="flex items-center gap-2">
+                                                <div className="flex flex-wrap gap-1">
+                                                    {POSITIONS.map(p => (
+                                                        <label key={p} className="text-xs">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={tempSubPositions.includes(p)}
+                                                                onChange={() => toggleTempSubPosition(p)}
+                                                                className="mr-1"
+                                                            />
+                                                            {p}
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                                <button
+                                                    onClick={() => saveSubPositions(m.id)}
+                                                    className="text-xs bg-blue-600 text-white px-2 py-1 rounded"
+                                                >
+                                                    저장
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        setEditingSubPositionId(null);
+                                                        setTempSubPositions([]);
+                                                    }}
+                                                    className="text-xs bg-gray-400 text-white px-2 py-1 rounded"
+                                                >
+                                                    취소
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <span 
+                                                className="cursor-pointer hover:bg-gray-100 px-2 py-1 rounded"
+                                                onClick={() => startEditingSubPositions(m)}
+                                                title="클릭하여 수정"
+                                            >
+                                                {m.subPositions || '-'}
+                                            </span>
+                                        )}
+                                    </td>
                                     <td className="text-xs">{m.note || '-'}</td>
                                     <td>
                                         <a href={getOpggLink(m.nickname)} target="_blank" className="link">
