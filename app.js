@@ -10,7 +10,7 @@ function App() {
 
     // 메뉴 항목 설정
     const menuItems = [
-        { id: 'members', name: '회원 관리', icon: '👥' },
+        { id: 'members', name: '클랜원 관리', icon: '👥' },
         { id: 'teamBuilder', name: '팀 짜기', icon: '⚔️' },
         // 새로운 메뉴는 여기에 추가
     ];
@@ -20,7 +20,7 @@ function App() {
             {/* 좌측 사이드바 */}
             <div className="w-64 bg-gray-900 text-white">
                 <div className="p-4">
-                    <h1 className="text-xl font-bold mb-6">LOL 관리 시스템</h1>
+                    <h1 className="text-xl font-bold mb-6">난민 클랜원 관리 시스템</h1>
                     <nav className="space-y-2">
                         {menuItems.map(item => (
                             <button
