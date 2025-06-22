@@ -1,9 +1,9 @@
-// 팀 짜기 페이지 컴포넌트 (기본 5팀 설정 추가)
+// 팀 짜기 페이지 컴포넌트 (기존 코드 + 기본 5팀 설정)
 function TeamBuilder() {
     const [members, setMembers] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedMembers, setSelectedMembers] = useState([]);
-    const [teamCount, setTeamCount] = useState(5); // ⭐ 기본 5팀 설정
+    const [teamCount, setTeamCount] = useState(5); // ⭐ 기본 5팀으로 변경
     const [teams, setTeams] = useState([]);
     const [stage, setStage] = useState('selectMembers'); // ⭐ 바로 멤버 선택으로 시작
     const [draggedMember, setDraggedMember] = useState(null);
@@ -16,9 +16,9 @@ function TeamBuilder() {
             });
     }, []);
 
-    // ⭐ 초기화 시 기본 5팀 설정
+    // ⭐ 초기 팀 배열 설정
     useEffect(() => {
-        if (teamCount) {
+        if (teamCount && teams.length === 0) {
             setTeams(Array(teamCount * 2).fill([]));
         }
     }, [teamCount]);
@@ -34,7 +34,7 @@ function TeamBuilder() {
         setTeamCount(count);
         setStage('selectMembers');
         setTeams(Array(count * 2).fill([]));
-        setSelectedMembers([]); // 팀 수 변경 시 선택 초기화
+        setSelectedMembers([]);
     };
 
     // 멤버 선택/해제
@@ -60,14 +60,124 @@ function TeamBuilder() {
             return;
         }
 
-        // utils/teamBalancer.js의 balanceTeams 함수 사용
-        const balancedTeams = balanceTeams(selectedMembers, teamCount);
+        // 포지션별로 멤버 분류
+        const membersByPosition = {
+            '탑': [],
+            '정글': [],
+            '미드': [],
+            '원딜': [],
+            '서폿': [],
+            '없음': []
+        };
+
+        selectedMembers.forEach(member => {
+            const position = member.mainPosition || '없음';
+            membersByPosition[position].push(member);
+        });
+
+        // 각 포지션별로 티어 순으로 정렬
+        Object.keys(membersByPosition).forEach(pos => {
+            membersByPosition[pos].sort((a, b) => getTierScore(b.tier) - getTierScore(a.tier));
+        });
+
+        // 팀 초기화
+        const newTeams = Array(teamCount * 2).fill(null).map(() => []);
         
-        if (balancedTeams) {
-            setTeams(balancedTeams);
-        } else {
-            alert('팀 밸런스에 실패했습니다.');
+        // 포지션별로 순환하면서 팀에 배분
+        const positions = ['탑', '정글', '미드', '원딜', '서폿'];
+        
+        // 1단계: 각 포지션을 팀에 균등 배분
+        positions.forEach(position => {
+            const positionMembers = membersByPosition[position];
+            positionMembers.forEach((member, index) => {
+                // 지그재그로 배분하여 티어 밸런스 맞추기
+                const teamIndex = index % (teamCount * 2);
+                newTeams[teamIndex].push(member);
+            });
+        });
+
+        // 2단계: 포지션이 없는 멤버들 배분
+        const noPositionMembers = membersByPosition['없음'];
+        
+        // 각 팀의 현재 인원수와 평균 티어 계산
+        const teamStats = newTeams.map((team, index) => ({
+            index,
+            count: team.length,
+            avgTier: team.length > 0 
+                ? team.reduce((sum, m) => sum + getTierScore(m.tier), 0) / team.length 
+                : 0
+        }));
+
+        // 포지션 없는 멤버들을 인원수가 적고 티어가 낮은 팀부터 배치
+        noPositionMembers.forEach(member => {
+            // 인원수가 가장 적은 팀들 찾기
+            const minCount = Math.min(...teamStats.map(t => t.count));
+            const teamsWithMinCount = teamStats.filter(t => t.count === minCount);
+            
+            // 그 중에서 평균 티어가 가장 낮은 팀 선택
+            const targetTeam = teamsWithMinCount.reduce((min, team) => 
+                team.avgTier < min.avgTier ? team : min
+            );
+            
+            // 멤버 추가
+            newTeams[targetTeam.index].push(member);
+            
+            // 통계 업데이트
+            targetTeam.count++;
+            const currentSum = targetTeam.avgTier * (targetTeam.count - 1);
+            targetTeam.avgTier = (currentSum + getTierScore(member.tier)) / targetTeam.count;
+        });
+
+        // 3단계: 최종 밸런스 조정 (포지션 중복 고려)
+        // 각 팀의 포지션 분포 확인 및 조정
+        for (let matchIdx = 0; matchIdx < teamCount; matchIdx++) {
+            const team1Idx = matchIdx * 2;
+            const team2Idx = matchIdx * 2 + 1;
+            const team1 = newTeams[team1Idx];
+            const team2 = newTeams[team2Idx];
+            
+            // 포지션 카운트
+            const getPositionCount = (team) => {
+                const count = {};
+                positions.forEach(pos => count[pos] = 0);
+                team.forEach(member => {
+                    if (positions.includes(member.mainPosition)) {
+                        count[member.mainPosition]++;
+                    }
+                });
+                return count;
+            };
+            
+            const team1Positions = getPositionCount(team1);
+            const team2Positions = getPositionCount(team2);
+            
+            // 포지션이 2명 이상인 경우 다른 팀으로 이동 고려
+            positions.forEach(pos => {
+                while (team1Positions[pos] > 1 && team2Positions[pos] === 0) {
+                    // team1에서 해당 포지션 멤버 중 하나를 team2로 이동
+                    const memberToMove = team1.find(m => m.mainPosition === pos);
+                    if (memberToMove) {
+                        team1.splice(team1.indexOf(memberToMove), 1);
+                        team2.push(memberToMove);
+                        team1Positions[pos]--;
+                        team2Positions[pos]++;
+                    }
+                }
+                
+                while (team2Positions[pos] > 1 && team1Positions[pos] === 0) {
+                    // team2에서 해당 포지션 멤버 중 하나를 team1로 이동
+                    const memberToMove = team2.find(m => m.mainPosition === pos);
+                    if (memberToMove) {
+                        team2.splice(team2.indexOf(memberToMove), 1);
+                        team1.push(memberToMove);
+                        team2Positions[pos]--;
+                        team1Positions[pos]++;
+                    }
+                }
+            });
         }
+
+        setTeams(newTeams);
     };
 
     // 드래그 시작
@@ -125,7 +235,7 @@ function TeamBuilder() {
         setSearchTerm('');
     };
 
-    // ⭐ 팀 개수 선택 화면에서 기본 5팀 강조
+    // ⭐ 팀 개수 선택 화면 (5팀 강조)
     if (stage === 'selectCount') {
         return (
             <div className="p-6">
@@ -154,7 +264,7 @@ function TeamBuilder() {
                                 </button>
                             ))}
                         </div>
-                        <div className="text-gray-600 mt-6">
+                        <div className="text-gray-600 mt-6 space-y-1">
                             {[1, 2, 3, 4, 5].map(num => (
                                 <div key={num} className={num === 5 ? 'font-bold text-green-600' : ''}>
                                     {num}팀 = {num * 10}명 필요 ({num}개의 5대5)
@@ -176,7 +286,7 @@ function TeamBuilder() {
         );
     }
 
-    // 멤버 선택 화면 (기존 코드와 동일)
+    // 멤버 선택 화면 (기존 코드와 거의 동일)
     return (
         <div className="p-6">
             <div className="bg-white rounded-lg shadow p-4 mb-4">
@@ -329,7 +439,7 @@ function TeamBuilder() {
                         })}
                     </div>
 
-                    {/* 팀 밸런스 요약 (기존 코드와 동일) */}
+                    {/* 팀 밸런스 요약 */}
                     {teams.some(t => t.length > 0) && (
                         <div className="mt-4 bg-gray-100 rounded-lg p-4">
                             <h3 className="font-bold mb-2">팀 밸런스 요약</h3>
@@ -374,7 +484,7 @@ function TeamBuilder() {
                         </div>
                     )}
 
-                    {/* 선택된 멤버 요약 (기존 코드와 동일) */}
+                    {/* 선택된 멤버 요약 */}
                     {selectedMembers.length > 0 && teams.every(t => t.length === 0) && (
                         <div className="mt-4 bg-gray-100 rounded-lg p-4">
                             <h3 className="font-bold mb-2">선택된 멤버 ({selectedMembers.length}명)</h3>
