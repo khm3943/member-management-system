@@ -1,15 +1,13 @@
-// 팀 짜기 페이지 컴포넌트 (팀당 5명 기본 구성)
+// 팀 짜기 페이지 컴포넌트 (개선된 밸런싱)
 function TeamBuilder() {
     const [members, setMembers] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedMembers, setSelectedMembers] = useState([]);
     const [teamCount, setTeamCount] = useState(null);
     const [teams, setTeams] = useState([]);
-    const [waitingMembers, setWaitingMembers] = useState([]); // ⭐ 대기 멤버들
     const [stage, setStage] = useState('selectCount');
     const [draggedMember, setDraggedMember] = useState(null);
     const [draggedFromTeam, setDraggedFromTeam] = useState(null);
-    const [draggedFromWaiting, setDraggedFromWaiting] = useState(false); // ⭐ 대기에서 드래그
 
     useEffect(() => {
         return db.collection('lol_members').orderBy('tier', 'desc')
@@ -29,33 +27,35 @@ function TeamBuilder() {
         setTeamCount(count);
         setStage('selectMembers');
         setTeams(Array(count * 2).fill([]));
-        setWaitingMembers([]); // ⭐ 대기 멤버 초기화
     };
 
     // 멤버 선택/해제
     const toggleMember = (member) => {
-        const maxMembers = teamCount * 10;
-        
         if (selectedMembers.find(m => m.id === member.id)) {
             setSelectedMembers(selectedMembers.filter(m => m.id !== member.id));
         } else {
-            if (selectedMembers.length < maxMembers) {
-                setSelectedMembers([...selectedMembers, member]);
-            } else {
-                alert(`최대 ${maxMembers}명까지만 선택 가능합니다.`);
-            }
+            setSelectedMembers([...selectedMembers, member]);
         }
     };
 
-    // ⭐ 개선된 자동 밸런스 (팀당 5명씩 먼저 구성)
+    // ⭐ 개선된 자동 밸런스 (각 팀 5명씩 + 매치별 밸런스)
     const autoBalance = () => {
-        const requiredMembers = teamCount * 10;
-        if (selectedMembers.length !== requiredMembers) {
-            alert(`정확히 ${requiredMembers}명을 선택해주세요. (현재: ${selectedMembers.length}명)`);
+        // ⭐ 선택된 인원수에 따라 팀 수 자동 계산
+        const totalMembers = selectedMembers.length;
+        if (totalMembers === 0) {
+            alert('멤버를 선택해주세요.');
             return;
         }
 
-        // 포지션별로 멤버 분류
+        if (totalMembers % 10 !== 0) {
+            alert(`10명 단위로 선택해주세요. (현재: ${totalMembers}명)\n10명=2팀, 20명=4팀, 30명=6팀...`);
+            return;
+        }
+
+        const calculatedTeamCount = totalMembers / 10; // 매치 수
+        const totalTeams = calculatedTeamCount * 2; // 총 팀 수
+
+        // 포지션별로 멤버 분류 및 티어 순 정렬
         const membersByPosition = {
             '탑': [],
             '정글': [],
@@ -70,51 +70,131 @@ function TeamBuilder() {
             membersByPosition[position].push(member);
         });
 
-        // 각 포지션별로 티어 순으로 정렬
+        // 각 포지션별로 티어 순으로 정렬 (높은 티어부터)
         Object.keys(membersByPosition).forEach(pos => {
             membersByPosition[pos].sort((a, b) => getTierScore(b.tier) - getTierScore(a.tier));
         });
 
-        // ⭐ 팀 초기화 (팀당 정확히 5명씩)
-        const newTeams = Array(teamCount * 2).fill(null).map(() => []);
-        const usedMembers = new Set();
-        
-        // ⭐ 1단계: 각 팀에 5명씩 먼저 배치
+        // ⭐ 1단계: 각 팀에 포지션별로 1명씩 배치
+        const newTeams = Array(totalTeams).fill(null).map(() => []);
         const positions = ['탑', '정글', '미드', '원딜', '서폿'];
-        
-        // 각 팀마다 포지션별로 1명씩 배치
-        for (let teamIdx = 0; teamIdx < teamCount * 2; teamIdx++) {
-            for (let posIdx = 0; posIdx < positions.length; posIdx++) {
-                const position = positions[posIdx];
-                const availableMembers = membersByPosition[position].filter(m => !usedMembers.has(m.id));
+        const usedMembers = new Set();
+
+        // 각 팀마다 포지션 순서대로 배치
+        for (let teamIdx = 0; teamIdx < totalTeams; teamIdx++) {
+            for (let posIdx = 0; posIdx < 5; posIdx++) { // 각 팀에 5명씩
+                let assigned = false;
                 
-                if (availableMembers.length > 0) {
-                    // 티어 밸런스를 위해 순환 배치
-                    const memberToAssign = availableMembers[Math.floor(teamIdx / 2) % availableMembers.length] || availableMembers[0];
-                    newTeams[teamIdx].push(memberToAssign);
-                    usedMembers.add(memberToAssign.id);
+                // 포지션 순서대로 시도
+                for (let i = 0; i < positions.length && !assigned; i++) {
+                    const position = positions[(posIdx + i) % positions.length];
+                    const availableMembers = membersByPosition[position].filter(m => !usedMembers.has(m.id));
                     
-                    // 배치된 멤버를 해당 포지션 배열에서 제거
-                    const memberIndex = membersByPosition[position].findIndex(m => m.id === memberToAssign.id);
-                    if (memberIndex !== -1) {
-                        membersByPosition[position].splice(memberIndex, 1);
+                    if (availableMembers.length > 0) {
+                        // 티어 밸런스를 위해 팀 순서대로 배치
+                        const memberToAssign = availableMembers[Math.floor(teamIdx / 2) % availableMembers.length] || availableMembers[0];
+                        newTeams[teamIdx].push(memberToAssign);
+                        usedMembers.add(memberToAssign.id);
+                        
+                        // 배치된 멤버를 해당 포지션 배열에서 제거
+                        const memberIndex = membersByPosition[position].findIndex(m => m.id === memberToAssign.id);
+                        if (memberIndex !== -1) {
+                            membersByPosition[position].splice(memberIndex, 1);
+                        }
+                        assigned = true;
+                    }
+                }
+
+                // 특정 포지션이 부족한 경우 '없음' 포지션에서 배치
+                if (!assigned) {
+                    const availableMembers = membersByPosition['없음'].filter(m => !usedMembers.has(m.id));
+                    if (availableMembers.length > 0) {
+                        const memberToAssign = availableMembers[0];
+                        newTeams[teamIdx].push(memberToAssign);
+                        usedMembers.add(memberToAssign.id);
+                        
+                        const memberIndex = membersByPosition['없음'].findIndex(m => m.id === memberToAssign.id);
+                        if (memberIndex !== -1) {
+                            membersByPosition['없음'].splice(memberIndex, 1);
+                        }
+                        assigned = true;
+                    }
+                }
+
+                // 그래도 부족한 경우 다른 포지션에서 가져오기
+                if (!assigned) {
+                    for (const pos of positions) {
+                        const availableMembers = membersByPosition[pos].filter(m => !usedMembers.has(m.id));
+                        if (availableMembers.length > 0) {
+                            const memberToAssign = availableMembers[0];
+                            newTeams[teamIdx].push(memberToAssign);
+                            usedMembers.add(memberToAssign.id);
+                            
+                            const memberIndex = membersByPosition[pos].findIndex(m => m.id === memberToAssign.id);
+                            if (memberIndex !== -1) {
+                                membersByPosition[pos].splice(memberIndex, 1);
+                            }
+                            break;
+                        }
                     }
                 }
             }
         }
 
-        // ⭐ 2단계: 나머지 멤버들은 대기 영역에 배치
-        const remainingMembers = selectedMembers.filter(member => !usedMembers.has(member.id));
-        
+        // ⭐ 2단계: 매치별 티어 밸런스 조정
+        for (let matchIdx = 0; matchIdx < calculatedTeamCount; matchIdx++) {
+            const team1Idx = matchIdx * 2;
+            const team2Idx = matchIdx * 2 + 1;
+            const team1 = newTeams[team1Idx];
+            const team2 = newTeams[team2Idx];
+
+            // 각 팀의 평균 티어 계산
+            const team1AvgTier = team1.reduce((sum, m) => sum + getTierScore(m.tier), 0) / team1.length;
+            const team2AvgTier = team2.reduce((sum, m) => sum + getTierScore(m.tier), 0) / team2.length;
+            
+            // 티어 차이가 큰 경우 멤버 교환으로 밸런스 조정
+            if (Math.abs(team1AvgTier - team2AvgTier) > 1.0) {
+                const strongerTeam = team1AvgTier > team2AvgTier ? team1 : team2;
+                const weakerTeam = team1AvgTier > team2AvgTier ? team2 : team1;
+                
+                // 같은 포지션끼리 교환 시도
+                for (let i = 0; i < strongerTeam.length && Math.abs(
+                    strongerTeam.reduce((sum, m) => sum + getTierScore(m.tier), 0) / strongerTeam.length -
+                    weakerTeam.reduce((sum, m) => sum + getTierScore(m.tier), 0) / weakerTeam.length
+                ) > 0.5; i++) {
+                    for (let j = 0; j < weakerTeam.length; j++) {
+                        const strongMember = strongerTeam[i];
+                        const weakMember = weakerTeam[j];
+                        
+                        // 같은 포지션이거나 포지션이 '없음'인 경우 교환
+                        if (strongMember.mainPosition === weakMember.mainPosition || 
+                            strongMember.mainPosition === '없음' || 
+                            weakMember.mainPosition === '없음') {
+                            
+                            // 교환 후 밸런스가 개선되는지 확인
+                            const newStrongerAvg = (strongerTeam.reduce((sum, m) => sum + getTierScore(m.tier), 0) - getTierScore(strongMember.tier) + getTierScore(weakMember.tier)) / strongerTeam.length;
+                            const newWeakerAvg = (weakerTeam.reduce((sum, m) => sum + getTierScore(m.tier), 0) - getTierScore(weakMember.tier) + getTierScore(strongMember.tier)) / weakerTeam.length;
+                            
+                            if (Math.abs(newStrongerAvg - newWeakerAvg) < Math.abs(team1AvgTier - team2AvgTier)) {
+                                // 교환 실행
+                                strongerTeam[i] = weakMember;
+                                weakerTeam[j] = strongMember;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         setTeams(newTeams);
-        setWaitingMembers(remainingMembers); // ⭐ 대기 멤버 설정
+        setTeamCount(calculatedTeamCount);
     };
 
-    // ⭐ 드래그 시작 (팀에서 또는 대기에서)
-    const handleDragStart = (e, member, teamIndex = null) => {
+    // 드래그 시작
+    const handleDragStart = (e, member, teamIndex) => {
         setDraggedMember(member);
         setDraggedFromTeam(teamIndex);
-        setDraggedFromWaiting(teamIndex === null); // 대기에서 드래그하는 경우
         e.dataTransfer.effectAllowed = 'move';
     };
 
@@ -124,63 +204,24 @@ function TeamBuilder() {
         e.dataTransfer.dropEffect = 'move';
     };
 
-    // ⭐ 팀에 드롭
-    const handleDropOnTeam = (e, toTeamIndex) => {
+    // 드롭
+    const handleDrop = (e, toTeamIndex) => {
         e.preventDefault();
         
-        if (!draggedMember) return;
-
-        const newTeams = [...teams];
-        const newWaitingMembers = [...waitingMembers];
-
-        // 대기에서 팀으로 이동
-        if (draggedFromWaiting) {
-            newTeams[toTeamIndex] = [...newTeams[toTeamIndex], draggedMember];
-            const waitingIndex = newWaitingMembers.findIndex(m => m.id === draggedMember.id);
-            if (waitingIndex !== -1) {
-                newWaitingMembers.splice(waitingIndex, 1);
-            }
-        }
-        // 팀에서 다른 팀으로 이동
-        else if (draggedFromTeam !== null && draggedFromTeam !== toTeamIndex) {
+        if (draggedMember && draggedFromTeam !== null && draggedFromTeam !== toTeamIndex) {
+            const newTeams = [...teams];
+            
             newTeams[draggedFromTeam] = newTeams[draggedFromTeam].filter(
                 m => m.id !== draggedMember.id
             );
+            
             newTeams[toTeamIndex] = [...newTeams[toTeamIndex], draggedMember];
+            
+            setTeams(newTeams);
         }
-
-        setTeams(newTeams);
-        setWaitingMembers(newWaitingMembers);
-        clearDragState();
-    };
-
-    // ⭐ 대기 영역에 드롭
-    const handleDropOnWaiting = (e) => {
-        e.preventDefault();
         
-        if (!draggedMember || draggedFromWaiting) return; // 대기에서 대기로는 이동 불가
-
-        const newTeams = [...teams];
-        const newWaitingMembers = [...waitingMembers];
-
-        // 팀에서 대기로 이동
-        if (draggedFromTeam !== null) {
-            newTeams[draggedFromTeam] = newTeams[draggedFromTeam].filter(
-                m => m.id !== draggedMember.id
-            );
-            newWaitingMembers.push(draggedMember);
-        }
-
-        setTeams(newTeams);
-        setWaitingMembers(newWaitingMembers);
-        clearDragState();
-    };
-
-    // 드래그 상태 초기화
-    const clearDragState = () => {
         setDraggedMember(null);
         setDraggedFromTeam(null);
-        setDraggedFromWaiting(false);
     };
 
     // 팀 통계 계산
@@ -201,7 +242,6 @@ function TeamBuilder() {
     const reset = () => {
         setSelectedMembers([]);
         setTeams([]);
-        setWaitingMembers([]); // ⭐ 대기 멤버 초기화
         setTeamCount(null);
         setStage('selectCount');
         setSearchTerm('');
@@ -214,7 +254,10 @@ function TeamBuilder() {
                 <div className="max-w-2xl mx-auto">
                     <div className="bg-white rounded-lg shadow p-8 text-center">
                         <h1 className="text-3xl font-bold mb-6">팀 짜기</h1>
-                        <p className="text-xl mb-8">몇 팀을 짜실건가요?</p>
+                        <p className="text-xl mb-4">몇 팀을 짜실건가요?</p>
+                        <p className="text-green-600 font-bold mb-8">
+                            ⭐ 각 팀마다 5명씩 자동 배치됩니다
+                        </p>
                         <div className="grid grid-cols-5 gap-4">
                             {[1, 2, 3, 4, 5].map(num => (
                                 <button
@@ -226,13 +269,18 @@ function TeamBuilder() {
                                 </button>
                             ))}
                         </div>
-                        <div className="text-gray-600 mt-6">
+                        <div className="text-gray-600 mt-6 space-y-1">
                             {[1, 2, 3, 4, 5].map(num => (
                                 <div key={num}>
-                                    {num}팀 = {num * 10}명 필요 ({num}개의 5대5) 
-                                    <span className="text-green-600 font-bold"> ⭐ 팀당 5명씩 먼저 구성</span>
+                                    {num}팀 = {num * 10}명 필요 ({num}개의 5대5)
                                 </div>
                             ))}
+                        </div>
+                        <div className="mt-6 p-4 bg-blue-50 rounded-lg">
+                            <p className="text-sm text-blue-700">
+                                💡 <strong>자동 밸런싱:</strong> 멤버 선택 후 "자동 밸런스" 클릭하면<br/>
+                                선택한 인원수에 맞춰 팀이 자동 생성됩니다 (10명=2팀, 20명=4팀...)
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -246,10 +294,10 @@ function TeamBuilder() {
             <div className="bg-white rounded-lg shadow p-4 mb-4">
                 <div className="flex justify-between items-center">
                     <div>
-                        <h1 className="text-2xl font-bold">{teamCount}팀 짜기</h1>
+                        <h1 className="text-2xl font-bold">팀 짜기</h1>
                         <p className="text-gray-600">
-                            {teamCount * 10}명을 선택하세요 (현재: {selectedMembers.length}명)
-                            <span className="text-green-600 font-bold"> ⭐ 팀당 5명씩 먼저 배치됩니다</span>
+                            멤버를 선택하세요 (현재: {selectedMembers.length}명)
+                            <span className="text-green-600 font-bold"> ⭐ 10명 단위로 선택 (10명=2팀, 20명=4팀...)</span>
                         </p>
                     </div>
                     <button onClick={reset} className="btn btn-gray">
@@ -302,10 +350,15 @@ function TeamBuilder() {
                         <button
                             onClick={autoBalance}
                             className="w-full mt-4 btn btn-blue"
-                            disabled={selectedMembers.length !== teamCount * 10}
+                            disabled={selectedMembers.length === 0 || selectedMembers.length % 10 !== 0}
                         >
-                            ⭐ 팀당 5명씩 구성 + 나머지 대기
+                            ⚡ 자동 밸런스 (각 팀 5명씩)
                         </button>
+                        {selectedMembers.length > 0 && selectedMembers.length % 10 !== 0 && (
+                            <p className="text-red-600 text-sm mt-2">
+                                10명 단위로 선택해주세요 (현재: {selectedMembers.length}명)
+                            </p>
+                        )}
                     </div>
                 </div>
 
@@ -322,15 +375,15 @@ function TeamBuilder() {
                                 <div 
                                     key={index} 
                                     className={`bg-white rounded-lg shadow p-4 ${
-                                        draggedFromWaiting || (draggedFromTeam !== null && draggedFromTeam !== index)
+                                        draggedFromTeam !== null && draggedFromTeam !== index 
                                             ? 'ring-2 ring-green-400' 
                                             : ''
                                     }`}
                                     onDragOver={handleDragOver}
-                                    onDrop={(e) => handleDropOnTeam(e, index)}
+                                    onDrop={(e) => handleDrop(e, index)}
                                 >
                                     <h2 className={`font-bold mb-3 text-${teamColor}-600`}>
-                                        매치 {matchNumber} - 팀 {teamNumber} ({team.length}명)
+                                        매치 {matchNumber} - 팀 {teamNumber} ({team.length}/5명)
                                     </h2>
                                     
                                     {/* 포지션 분포 표시 */}
@@ -351,7 +404,7 @@ function TeamBuilder() {
                                         </div>
                                     )}
                                     
-                                    <div className="space-y-2 min-h-[200px]">
+                                    <div className="space-y-2 min-h-[250px]">
                                         {team.map((member, idx) => (
                                             <div 
                                                 key={member.id} 
@@ -376,18 +429,11 @@ function TeamBuilder() {
                                                 </div>
                                             </div>
                                         ))}
-                                        
-                                        {/* ⭐ 팀이 5명 미만일 때 빈 슬롯 표시 */}
-                                        {team.length < 5 && Array.from({ length: 5 - team.length }).map((_, emptyIdx) => (
-                                            <div key={`empty-${emptyIdx}`} className="p-2 border-2 border-dashed border-gray-300 rounded text-center text-gray-400">
-                                                빈 자리
-                                            </div>
-                                        ))}
                                     </div>
                                     
                                     {team.length > 0 && (
                                         <div className="mt-3 pt-3 border-t text-sm text-gray-600">
-                                            <div>인원: {team.length}명 / 5명</div>
+                                            <div>인원: {team.length}명</div>
                                             <div>평균 티어 점수: {stats.avgTier.toFixed(1)}</div>
                                         </div>
                                     )}
@@ -396,45 +442,10 @@ function TeamBuilder() {
                         })}
                     </div>
 
-                    {/* ⭐ 대기 멤버 영역 */}
-                    {waitingMembers.length > 0 && (
-                        <div className="mt-4 bg-yellow-50 rounded-lg shadow p-4">
-                            <h3 className="font-bold mb-3 text-yellow-700">
-                                ⏳ 대기 멤버 ({waitingMembers.length}명)
-                            </h3>
-                            <p className="text-sm text-yellow-600 mb-3">
-                                아래 멤버들을 팀으로 드래그해서 추가하거나 기존 멤버와 교체하세요
-                            </p>
-                            <div 
-                                className={`grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 min-h-[100px] p-3 border-2 border-dashed border-yellow-300 rounded ${
-                                    draggedFromTeam !== null ? 'ring-2 ring-yellow-400 bg-yellow-100' : ''
-                                }`}
-                                onDragOver={handleDragOver}
-                                onDrop={handleDropOnWaiting}
-                            >
-                                {waitingMembers.map((member) => (
-                                    <div 
-                                        key={member.id} 
-                                        className="p-2 bg-white rounded cursor-move hover:shadow-md transition border"
-                                        draggable
-                                        onDragStart={(e) => handleDragStart(e, member, null)}
-                                    >
-                                        <div className="text-sm font-medium">{member.name}</div>
-                                        <div className="text-xs text-gray-600">{member.nickname}</div>
-                                        <div className="text-xs">{member.mainPosition}</div>
-                                        <span className={`tier text-xs ${getTierClass(member.tier)}`}>
-                                            {member.tier}
-                                        </span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* 팀 밸런스 요약 */}
-                    {teams.some(t => t.length > 0) && (
+                    {/* 매치별 밸런스 요약 */}
+                    {teams.some(t => t.length > 0) && teamCount && (
                         <div className="mt-4 bg-gray-100 rounded-lg p-4">
-                            <h3 className="font-bold mb-2">팀 밸런스 요약</h3>
+                            <h3 className="font-bold mb-2">매치별 팀 밸런스</h3>
                             <div className="space-y-2">
                                 {Array.from({ length: teamCount }).map((_, matchIdx) => {
                                     const team1 = teams[matchIdx * 2] || [];
@@ -446,16 +457,20 @@ function TeamBuilder() {
                                     
                                     return (
                                         <div key={matchIdx} className="border rounded p-3 bg-white">
-                                            <div className="font-medium mb-1">매치 {matchIdx + 1}</div>
-                                            <div className="text-sm grid grid-cols-3 gap-2">
-                                                <div>팀1: {team1.length}명</div>
-                                                <div>팀2: {team2.length}명</div>
+                                            <div className="font-medium mb-1">🎮 매치 {matchIdx + 1}</div>
+                                            <div className="text-sm grid grid-cols-2 gap-4">
                                                 <div>
-                                                    <span className="font-medium">티어 차이:</span>
-                                                    <span className={`ml-2 ${tierDiff > 0.5 ? 'text-red-600' : 'text-green-600'}`}>
-                                                        {tierDiff.toFixed(2)}점
-                                                    </span>
+                                                    <span className="text-blue-600 font-medium">팀1:</span> {team1.length}명 (평균: {team1Stats.avgTier.toFixed(1)})
                                                 </div>
+                                                <div>
+                                                    <span className="text-red-600 font-medium">팀2:</span> {team2.length}명 (평균: {team2Stats.avgTier.toFixed(1)})
+                                                </div>
+                                            </div>
+                                            <div className="text-sm mt-1">
+                                                <span className="font-medium">티어 차이:</span>
+                                                <span className={`ml-2 ${tierDiff > 0.5 ? 'text-red-600' : 'text-green-600'}`}>
+                                                    {tierDiff.toFixed(2)}점 {tierDiff <= 0.5 ? '✅' : '⚠️'}
+                                                </span>
                                             </div>
                                         </div>
                                     );
@@ -465,7 +480,7 @@ function TeamBuilder() {
                     )}
 
                     {/* 선택된 멤버 요약 */}
-                    {selectedMembers.length > 0 && teams.every(t => t.length === 0) && waitingMembers.length === 0 && (
+                    {selectedMembers.length > 0 && teams.every(t => t.length === 0) && (
                         <div className="mt-4 bg-gray-100 rounded-lg p-4">
                             <h3 className="font-bold mb-2">선택된 멤버 ({selectedMembers.length}명)</h3>
                             <div className="flex flex-wrap gap-2">
