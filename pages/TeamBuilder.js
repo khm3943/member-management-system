@@ -44,7 +44,7 @@ function TeamBuilder() {
         }
     };
 
-    // 자동 밸런스
+    // 개선된 자동 밸런스 (포지션 + 티어 고려)
     const autoBalance = () => {
         const requiredMembers = teamCount * 10;
         if (selectedMembers.length !== requiredMembers) {
@@ -52,22 +52,122 @@ function TeamBuilder() {
             return;
         }
 
-        const sortedMembers = [...selectedMembers].sort((a, b) => 
-            getTierScore(b.tier) - getTierScore(a.tier)
-        );
+        // 포지션별로 멤버 분류
+        const membersByPosition = {
+            '탑': [],
+            '정글': [],
+            '미드': [],
+            '원딜': [],
+            '서폿': [],
+            '없음': []
+        };
 
+        selectedMembers.forEach(member => {
+            const position = member.mainPosition || '없음';
+            membersByPosition[position].push(member);
+        });
+
+        // 각 포지션별로 티어 순으로 정렬
+        Object.keys(membersByPosition).forEach(pos => {
+            membersByPosition[pos].sort((a, b) => getTierScore(b.tier) - getTierScore(a.tier));
+        });
+
+        // 팀 초기화
         const newTeams = Array(teamCount * 2).fill(null).map(() => []);
         
-        sortedMembers.forEach((member, index) => {
-            const round = Math.floor(index / (teamCount * 2));
-            const pick = index % (teamCount * 2);
-            
-            if (round % 2 === 0) {
-                newTeams[pick].push(member);
-            } else {
-                newTeams[teamCount * 2 - 1 - pick].push(member);
-            }
+        // 포지션별로 순환하면서 팀에 배분
+        const positions = ['탑', '정글', '미드', '원딜', '서폿'];
+        
+        // 1단계: 각 포지션을 팀에 균등 배분
+        positions.forEach(position => {
+            const positionMembers = membersByPosition[position];
+            positionMembers.forEach((member, index) => {
+                // 지그재그로 배분하여 티어 밸런스 맞추기
+                const teamIndex = index % (teamCount * 2);
+                newTeams[teamIndex].push(member);
+            });
         });
+
+        // 2단계: 포지션이 없는 멤버들 배분
+        const noPositionMembers = membersByPosition['없음'];
+        
+        // 각 팀의 현재 인원수와 평균 티어 계산
+        const teamStats = newTeams.map((team, index) => ({
+            index,
+            count: team.length,
+            avgTier: team.length > 0 
+                ? team.reduce((sum, m) => sum + getTierScore(m.tier), 0) / team.length 
+                : 0
+        }));
+
+        // 포지션 없는 멤버들을 인원수가 적고 티어가 낮은 팀부터 배치
+        noPositionMembers.forEach(member => {
+            // 인원수가 가장 적은 팀들 찾기
+            const minCount = Math.min(...teamStats.map(t => t.count));
+            const teamsWithMinCount = teamStats.filter(t => t.count === minCount);
+            
+            // 그 중에서 평균 티어가 가장 낮은 팀 선택
+            const targetTeam = teamsWithMinCount.reduce((min, team) => 
+                team.avgTier < min.avgTier ? team : min
+            );
+            
+            // 멤버 추가
+            newTeams[targetTeam.index].push(member);
+            
+            // 통계 업데이트
+            targetTeam.count++;
+            const currentSum = targetTeam.avgTier * (targetTeam.count - 1);
+            targetTeam.avgTier = (currentSum + getTierScore(member.tier)) / targetTeam.count;
+        });
+
+        // 3단계: 최종 밸런스 조정 (포지션 중복 고려)
+        // 각 팀의 포지션 분포 확인 및 조정
+        for (let matchIdx = 0; matchIdx < teamCount; matchIdx++) {
+            const team1Idx = matchIdx * 2;
+            const team2Idx = matchIdx * 2 + 1;
+            const team1 = newTeams[team1Idx];
+            const team2 = newTeams[team2Idx];
+            
+            // 포지션 카운트
+            const getPositionCount = (team) => {
+                const count = {};
+                positions.forEach(pos => count[pos] = 0);
+                team.forEach(member => {
+                    if (positions.includes(member.mainPosition)) {
+                        count[member.mainPosition]++;
+                    }
+                });
+                return count;
+            };
+            
+            const team1Positions = getPositionCount(team1);
+            const team2Positions = getPositionCount(team2);
+            
+            // 포지션이 2명 이상인 경우 다른 팀으로 이동 고려
+            positions.forEach(pos => {
+                while (team1Positions[pos] > 1 && team2Positions[pos] === 0) {
+                    // team1에서 해당 포지션 멤버 중 하나를 team2로 이동
+                    const memberToMove = team1.find(m => m.mainPosition === pos);
+                    if (memberToMove) {
+                        team1.splice(team1.indexOf(memberToMove), 1);
+                        team2.push(memberToMove);
+                        team1Positions[pos]--;
+                        team2Positions[pos]++;
+                    }
+                }
+                
+                while (team2Positions[pos] > 1 && team1Positions[pos] === 0) {
+                    // team2에서 해당 포지션 멤버 중 하나를 team1로 이동
+                    const memberToMove = team2.find(m => m.mainPosition === pos);
+                    if (memberToMove) {
+                        team2.splice(team2.indexOf(memberToMove), 1);
+                        team1.push(memberToMove);
+                        team2Positions[pos]--;
+                        team1Positions[pos]++;
+                    }
+                }
+            });
+        }
 
         setTeams(newTeams);
     };
@@ -79,7 +179,7 @@ function TeamBuilder() {
         e.dataTransfer.effectAllowed = 'move';
     };
 
-    // 드래그 오버 (드롭 허용)
+    // 드래그 오버
     const handleDragOver = (e) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
@@ -92,12 +192,10 @@ function TeamBuilder() {
         if (draggedMember && draggedFromTeam !== null && draggedFromTeam !== toTeamIndex) {
             const newTeams = [...teams];
             
-            // 원래 팀에서 제거
             newTeams[draggedFromTeam] = newTeams[draggedFromTeam].filter(
                 m => m.id !== draggedMember.id
             );
             
-            // 새 팀에 추가
             newTeams[toTeamIndex] = [...newTeams[toTeamIndex], draggedMember];
             
             setTeams(newTeams);
@@ -105,6 +203,20 @@ function TeamBuilder() {
         
         setDraggedMember(null);
         setDraggedFromTeam(null);
+    };
+
+    // 팀 통계 계산
+    const getTeamStats = (team) => {
+        if (team.length === 0) return { avgTier: 0, positions: {} };
+        
+        const avgTier = team.reduce((sum, m) => sum + getTierScore(m.tier), 0) / team.length;
+        const positions = {};
+        
+        ['탑', '정글', '미드', '원딜', '서폿'].forEach(pos => {
+            positions[pos] = team.filter(m => m.mainPosition === pos).length;
+        });
+        
+        return { avgTier, positions };
     };
 
     // 초기화
@@ -212,7 +324,7 @@ function TeamBuilder() {
                             className="w-full mt-4 btn btn-blue"
                             disabled={selectedMembers.length !== teamCount * 10}
                         >
-                            자동 밸런스
+                            자동 밸런스 (포지션 고려)
                         </button>
                     </div>
                 </div>
@@ -224,6 +336,7 @@ function TeamBuilder() {
                             const matchNumber = Math.floor(index / 2) + 1;
                             const teamNumber = (index % 2) + 1;
                             const teamColor = teamNumber === 1 ? 'blue' : 'red';
+                            const stats = getTeamStats(team);
                             
                             return (
                                 <div 
@@ -239,6 +352,25 @@ function TeamBuilder() {
                                     <h2 className={`font-bold mb-3 text-${teamColor}-600`}>
                                         매치 {matchNumber} - 팀 {teamNumber}
                                     </h2>
+                                    
+                                    {/* 포지션 분포 표시 */}
+                                    {team.length > 0 && (
+                                        <div className="mb-3 text-xs flex gap-2 flex-wrap">
+                                            {Object.entries(stats.positions).map(([pos, count]) => (
+                                                <span 
+                                                    key={pos} 
+                                                    className={`px-2 py-1 rounded ${
+                                                        count === 0 ? 'bg-gray-200 text-gray-500' : 
+                                                        count === 1 ? 'bg-green-100 text-green-700' : 
+                                                        'bg-yellow-100 text-yellow-700'
+                                                    }`}
+                                                >
+                                                    {pos}: {count}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+                                    
                                     <div className="space-y-2 min-h-[200px]">
                                         {team.map((member, idx) => (
                                             <div 
@@ -260,6 +392,7 @@ function TeamBuilder() {
                                                 </div>
                                                 <div className="text-xs text-gray-600">
                                                     {member.mainPosition}
+                                                    {member.subPositions && ` (부: ${member.subPositions})`}
                                                 </div>
                                             </div>
                                         ))}
@@ -267,7 +400,7 @@ function TeamBuilder() {
                                     {team.length > 0 && (
                                         <div className="mt-3 pt-3 border-t text-sm text-gray-600">
                                             <div>인원: {team.length}명</div>
-                                            <div>평균 티어 점수: {(team.reduce((sum, m) => sum + getTierScore(m.tier), 0) / team.length).toFixed(1)}</div>
+                                            <div>평균 티어 점수: {stats.avgTier.toFixed(1)}</div>
                                         </div>
                                     )}
                                 </div>
@@ -279,20 +412,40 @@ function TeamBuilder() {
                     {teams.some(t => t.length > 0) && (
                         <div className="mt-4 bg-gray-100 rounded-lg p-4">
                             <h3 className="font-bold mb-2">팀 밸런스 요약</h3>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
                                 {Array.from({ length: teamCount }).map((_, matchIdx) => {
                                     const team1 = teams[matchIdx * 2] || [];
                                     const team2 = teams[matchIdx * 2 + 1] || [];
-                                    const team1Score = team1.reduce((sum, m) => sum + getTierScore(m.tier), 0) / (team1.length || 1);
-                                    const team2Score = team2.reduce((sum, m) => sum + getTierScore(m.tier), 0) / (team2.length || 1);
-                                    const diff = Math.abs(team1Score - team2Score);
+                                    const team1Stats = getTeamStats(team1);
+                                    const team2Stats = getTeamStats(team2);
+                                    const tierDiff = Math.abs(team1Stats.avgTier - team2Stats.avgTier);
+                                    
+                                    // 포지션 밸런스 체크
+                                    const positionBalance = ['탑', '정글', '미드', '원딜', '서폿'].map(pos => ({
+                                        pos,
+                                        team1: team1Stats.positions[pos] || 0,
+                                        team2: team2Stats.positions[pos] || 0
+                                    }));
                                     
                                     return (
-                                        <div key={matchIdx} className="text-sm">
-                                            <span className="font-medium">매치 {matchIdx + 1}:</span>
-                                            <span className={`ml-2 ${diff > 0.5 ? 'text-red-600' : 'text-green-600'}`}>
-                                                차이: {diff.toFixed(2)}점
-                                            </span>
+                                        <div key={matchIdx} className="border rounded p-3 bg-white">
+                                            <div className="font-medium mb-1">매치 {matchIdx + 1}</div>
+                                            <div className="text-sm grid grid-cols-2 gap-2">
+                                                <div>
+                                                    <span className="font-medium">티어 차이:</span>
+                                                    <span className={`ml-2 ${tierDiff > 0.5 ? 'text-red-600' : 'text-green-600'}`}>
+                                                        {tierDiff.toFixed(2)}점
+                                                    </span>
+                                                </div>
+                                                <div>
+                                                    <span className="font-medium">포지션:</span>
+                                                    {positionBalance.every(p => p.team1 <= 1 && p.team2 <= 1) ? (
+                                                        <span className="ml-2 text-green-600">균형</span>
+                                                    ) : (
+                                                        <span className="ml-2 text-yellow-600">불균형</span>
+                                                    )}
+                                                </div>
+                                            </div>
                                         </div>
                                     );
                                 })}
@@ -311,7 +464,7 @@ function TeamBuilder() {
                                         className="px-2 py-1 bg-white rounded text-sm cursor-pointer hover:bg-red-100"
                                         onClick={() => toggleMember(member)}
                                     >
-                                        {member.name} ✕
+                                        {member.name} ({member.mainPosition}) ✕
                                     </span>
                                 ))}
                             </div>
