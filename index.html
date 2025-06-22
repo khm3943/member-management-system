@@ -16,27 +16,14 @@
 <body>
     <div id="root"></div>
     
-    <!-- 설정 -->
+    <!-- 설정 및 유틸리티 (기존 방식) -->
     <script src="config.js"></script>
+    <script src="utils.js"></script>
     
-    <!-- 새로 분리된 유틸리티들 -->
-    <script src="utils/tierUtils.js"></script>
-    <script src="utils/csvUtils.js"></script>
-    <script src="utils/opggUtils.js"></script>
+    <!-- 팀 밸런서 (기존 유지) -->
     <script src="utils/teamBalancer.js"></script>
     
-    <!-- 커스텀 훅들 -->
-    <script type="text/babel" src="hooks/useMembers.js"></script>
-    <script type="text/babel" src="hooks/useTeamBuilder.js"></script>
-    
-    <!-- 컴포넌트들 -->
-    <script type="text/babel" src="components/member/MemberForm.js"></script>
-    <script type="text/babel" src="components/member/MemberTable.js"></script>
-    <script type="text/babel" src="components/team/TeamCountSelector.js"></script>
-    <script type="text/babel" src="components/team/MemberSelector.js"></script>
-    <script type="text/babel" src="components/team/TeamGrid.js"></script>
-    
-    <!-- 페이지 컴포넌트들 -->
+    <!-- 각 페이지 컴포넌트 (기존 유지) -->
     <script type="text/babel" src="pages/MemberManagement.js"></script>
     <script type="text/babel" src="pages/TeamBuilder.js"></script>
     
